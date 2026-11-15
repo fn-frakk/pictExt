@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 构建零依赖，但测试需要 jsdom
+      - run: npm install --no-audit --no-fund
+
+      - name: 构建 + 语法检查
+        run: npm run check
+
+      - name: jsdom 断言
+        run: npm test
+
+      - name: 校验 manifest 指向的产物已提交
+        run: |
+          git diff --exit-code -- dist/content.js \
+            || (echo "::error::dist/content.js 与 src/ 不一致，请本地跑 npm run build 后提交" && exit 1)

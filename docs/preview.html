@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pictExt 样式预览</title>
+<!-- 直接用站点自己的样式表，保证类名效果一致 -->
+<link rel="stylesheet" href="https://pickcat.dao3.fun/_nuxt/entry.B82h2TXf.css" crossorigin>
+<style>
+
+#pictExt-panel{
+  --px-primary: var(--ui-primary, #3b82f6);
+  --px-text: var(--ui-text, #111827);
+  --px-muted: var(--ui-text-muted, #6b7280);
+  --px-dim: var(--ui-text-dimmed, #9ca3af);
+  --px-border: var(--ui-border, rgba(127,127,127,.24));
+  margin: 0 0 12px;
+  color: var(--px-text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+#pictExt-panel, #pictExt-panel *{ box-sizing: border-box; }
+#pictExt-panel .px-bar{
+  display:flex; align-items:center; gap:8px;
+  min-height:36px; margin-bottom:8px; flex-wrap:wrap;
+}
+#pictExt-panel .px-tabs{ display:flex; align-items:center; gap:2px; flex-wrap:wrap; }
+#pictExt-panel.px-align-end .px-tabs{ margin-left:auto; }
+#pictExt-panel .px-tab{
+  appearance:none; border:0; background:transparent; cursor:pointer;
+  display:inline-flex; align-items:center; min-width:0;
+  padding:6px 12px; border-radius:8px;
+  font-size:15px; font-weight:500; font-family:inherit; line-height:1.4;
+  color:var(--px-muted); position:relative;
+  transition:color .15s ease;
+}
+#pictExt-panel .px-tab:hover{ color:var(--px-text); }
+#pictExt-panel .px-tab[data-active="true"]{ color:var(--px-primary); }
+#pictExt-panel .px-tab[data-active="true"]::after{
+  content:""; position:absolute; left:10px; right:10px; bottom:-2px;
+  height:1px; background:var(--px-primary);
+}
+#pictExt-panel .px-tab:focus-visible{ outline:2px solid var(--px-primary); outline-offset:2px; }
+#pictExt-panel .px-note{
+  font-size:12px; line-height:1.6; color:var(--px-dim); margin:0 0 10px; padding-left:2px;
+}
+#pictExt-panel .px-list{ display:flex; flex-direction:column; gap:12px; }
+#pictExt-panel .px-state{
+  padding:26px 12px; text-align:center; font-size:13px; color:var(--px-dim);
+}
+#pictExt-panel .px-state button{
+  margin-top:10px; display:inline-block; cursor:pointer;
+  border:1px solid var(--px-border); background:transparent; color:var(--px-text);
+  border-radius:8px; padding:6px 14px; font-size:13px; font-family:inherit;
+}
+#pictExt-panel .px-foot{ display:flex; justify-content:center; padding:12px 0 4px; }
+#pictExt-panel .px-more{
+  cursor:pointer; border:1px solid var(--px-border); background:transparent;
+  color:var(--px-text); border-radius:9px; padding:8px 22px;
+  font-size:13px; font-weight:600; font-family:inherit;
+  transition:background-color .15s ease;
+}
+#pictExt-panel .px-more:hover{ background:color-mix(in srgb, var(--px-primary) 10%, transparent); }
+#pictExt-panel .px-more[disabled]{ opacity:.55; cursor:default; }
+
+/* 评论区「改版」排序栏：视觉对齐站点原生评论排序 */
+#pictExt-comment-sort{
+  display:flex; align-items:center; gap:2px; flex-wrap:wrap;
+  margin: 0 0 10px;
+}
+#pictExt-comment-sort .pxc-tab{
+  appearance:none; border:0; background:transparent; cursor:pointer;
+  padding:4px 9px; border-radius:8px;
+  font-family:inherit; font-size:14px; font-weight:500; line-height:1.5;
+  color:var(--ui-text-muted,#6b7280); position:relative;
+  transition:color .15s ease;
+}
+#pictExt-comment-sort .pxc-tab:hover{ color:var(--ui-text,#111827); }
+#pictExt-comment-sort .pxc-tab[data-active="true"]{ color:var(--ui-primary,#3b82f6); }
+#pictExt-comment-sort .pxc-tab[data-active="true"]::after{
+  content:""; position:absolute; left:8px; right:8px; bottom:-1px;
+  height:1px; background:var(--ui-primary,#3b82f6);
+}
+#pictExt-comment-sort .pxc-note{
+  margin-left:6px; font-size:12px; color:var(--ui-text-dimmed,#9ca3af);
+}
+
+  body{ margin:0; padding:26px 16px 70px; background:var(--ui-bg,#f6f7fb); color:var(--ui-text,#111); font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  .wrap{max-width:660px;margin:0 auto}
+  .hint{max-width:660px;margin:0 auto 18px;font-size:13px;line-height:1.8;color:var(--ui-text-muted,#6b7280)}
+  .hint b{color:var(--ui-text,#111)}
+  .toggle{position:fixed;right:18px;top:18px;z-index:99;cursor:pointer;border:1px solid var(--ui-border,rgba(127,127,127,.3));background:var(--ui-bg-elevated,#fff);color:var(--ui-text,#111);border-radius:9px;padding:7px 13px;font-size:13px;font-family:inherit}
+  .shell{background:var(--ui-bg,#fff);border:1px solid var(--ui-border,rgba(127,127,127,.2));border-radius:16px;padding:16px}
+  .native-bar{display:flex;align-items:center;justify-content:space-between;min-height:44px;margin-bottom:4px}
+  .native-tabs{display:flex;gap:2px}
+  .native-tab{position:relative;border:0;background:transparent;font-family:inherit;font-size:15px;font-weight:500;color:var(--ui-text-muted,#6b7280);padding:6px 10px;border-radius:8px;cursor:default}
+  .native-tab[data-state="active"]{color:var(--ui-primary,#3b82f6)}
+  .native-tab[data-state="active"]::after{content:"";position:absolute;left:10px;right:10px;bottom:-2px;height:1px;background:var(--ui-primary,#3b82f6)}
+  .sec-title{margin:26px 0 10px;font-size:15px;font-weight:800}
+  .reply-demo{border:1px solid var(--ui-border,rgba(127,127,127,.2));border-radius:12px;padding:12px}
+  .reply-demo p{margin:0 0 6px;font-size:14px;line-height:1.7}
+  .reply-demo .indent{margin-left:46px;background:var(--ui-comment-replies-bg,rgba(127,127,127,.06));border-radius:8px;padding:4px 12px;font-size:13px;color:var(--ui-text-muted,#6b7280)}
+</style>
+</head>
+<body>
+<button class="toggle" onclick="var h=document.documentElement;h.classList.toggle('dark');h.classList.toggle('light')">切换明 / 暗</button>
+<p class="hint">
+  <b>pictExt v1.5 预览</b>：排序栏 + 卡片都是扩展内容脚本真实渲染出来的 HTML，配合站点原样式表显示。<br>
+  当前展示「全部替换」模式：站内原来的「关注 / 推荐 / 最新」整排被替换成下面这 8 项（关注、推荐流、最新、最多浏览、最多点赞、最多回复、最多收藏、最热），首页 / 所有板块页 / 搜索页都是同一套。<br>
+  卡片底部开启了「显示改良」：原来的「x 时间前」换成 发布时间 / 最近更新 / 最近回复 三项。
+</p>
+
+<div class="wrap">
+  <div class="shell">
+    <div class="native-bar">
+      <span style="font-size:15px;color:var(--ui-text-muted,#6b7280)">板块</span>
+      <span style="font-size:12px;color:var(--ui-text-dimmed,#9ca3af)">（站内原生排序栏在替换模式下隐藏）</span>
+    </div>
+
+<div id="pictExt-panel" class="px-align-end" data-kind="home"><div class="px-bar"><div class="px-tabs" role="tablist" aria-label="pictExt 排序"><button class="px-tab" type="button" role="tab" data-sort="following" data-active="false" aria-selected="false">关注</button><button class="px-tab" type="button" role="tab" data-sort="recommended" data-active="false" aria-selected="false">推荐流</button><button class="px-tab" type="button" role="tab" data-sort="latest" data-active="false" aria-selected="false">最新</button><button class="px-tab" type="button" role="tab" data-sort="views" data-active="false" aria-selected="false">最多浏览</button><button class="px-tab" type="button" role="tab" data-sort="likes" data-active="true" aria-selected="true">最多点赞</button><button class="px-tab" type="button" role="tab" data-sort="replies" data-active="false" aria-selected="false">最多回复</button><button class="px-tab" type="button" role="tab" data-sort="bookmarks" data-active="false" aria-selected="false">最多收藏</button><button class="px-tab" type="button" role="tab" data-sort="hot" data-active="false" aria-selected="false">最热</button></div></div>
+      <p class="px-note">按点赞数排序 · 候选池 14 条（全站，最新 6 页 + 热帖 3 页）</p>
+      <div class="px-list" aria-live="polite"><article class="group relative isolate grid min-w-0 grid-cols-1 min-h-46 gap-3 py-5 px-3.5 desktop:px-5 rounded-lg bg-(--ui-card-translucent)">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div class="flex min-w-0 flex-1 items-start gap-2">
+            <span class="mt-0.75 shrink-0 text-primary" title="置顶帖子"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="m235.32 81.37l-60.69-60.68a16 16 0 0 0-22.63 0l-53.63 53.8c-10.66-3.34-35-7.37-60.4 13.14a16 16 0 0 0-1.29 23.78L85 159.71l-42.66 42.63a8 8 0 0 0 11.32 11.32L96.29 171l48.29 48.29A16 16 0 0 0 155.9 224h1.13a15.93 15.93 0 0 0 11.64-6.33c19.64-26.1 17.75-47.32 13.19-60L235.33 104a16 16 0 0 0-.01-22.63M224 92.69l-57.27 57.46a8 8 0 0 0-1.49 9.22c9.46 18.93-1.8 38.59-9.34 48.62L48 100.08c12.08-9.74 23.64-12.31 32.48-12.31A40.1 40.1 0 0 1 96.81 91a8 8 0 0 0 9.25-1.51L163.32 32L224 92.68Z"></path></svg></span>
+            <h2 title="PickCat 创作者等级" class="min-w-0 text-base leading-[1.4] font-extrabold text-default desktop:text-[17px]">
+              <a href="/forum/post/t0" class="block after:absolute after:inset-0 after:z-10 after:rounded-lg focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-primary"><span class="line-clamp-2">PickCat 创作者等级</span></a>
+            </h2>
+          </div>
+        </div>
+        <div class="mt-1 flex flex-wrap gap-x-5 gap-y-1"><a href="/forum/category/creative-works" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#创作与作品</a></div>
+        <p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">这里是一段帖子摘要，用来占位展示两行截断的效果，长度大概和站内真实摘要接近，方便看排版。</p>
+      </div>
+      <div class="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs leading-4.5 text-dimmed">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 font-medium">
+          <a href="/profile/u0" class="relative z-20 flex min-w-0 items-center gap-1.5">
+            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">旁</span>
+            <span title="旁观者jers" class="min-w-0 truncate font-semibold text-muted">旁观者jers</span>
+          </a>
+          
+        </div>
+        <ul aria-label="帖子数据" class="ml-auto flex shrink-0 items-center gap-3.5 font-normal">
+          <li class="inline-flex items-center gap-1" title="回复：56"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M128 24a104 104 0 0 0-91.82 152.88l-11.35 34.05a16 16 0 0 0 20.24 20.24l34.05-11.35A104 104 0 1 0 128 24m0 192a87.87 87.87 0 0 1-44.06-11.81a8 8 0 0 0-6.54-.67L40 216l12.47-37.4a8 8 0 0 0-.66-6.54A88 88 0 1 1 128 216"></path></svg><span class="sr-only">回复</span>56</li><li class="inline-flex items-center gap-1" title="浏览：229"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M247.31 124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57 61.26 162.88 48 128 48S61.43 61.26 36.34 86.35C17.51 105.18 9 124 8.69 124.76a8 8 0 0 0 0 6.5c.35.79 8.82 19.57 27.65 38.4C61.43 194.74 93.12 208 128 208s66.57-13.26 91.66-38.34c18.83-18.83 27.3-37.61 27.65-38.4a8 8 0 0 0 0-6.5M128 192c-30.78 0-57.67-11.19-79.93-33.25A133.5 133.5 0 0 1 25 128a133.3 133.3 0 0 1 23.07-30.75C70.33 75.19 97.22 64 128 64s57.67 11.19 79.93 33.25A133.5 133.5 0 0 1 231.05 128c-7.21 13.46-38.62 64-103.05 64m0-112a48 48 0 1 0 48 48a48.05 48.05 0 0 0-48-48m0 80a32 32 0 1 1 32-32a32 32 0 0 1-32 32"></path></svg><span class="sr-only">浏览</span>229</li><li class="inline-flex items-center gap-1" title="赞：40"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M178 40c-20.65 0-38.73 8.88-50 23.89C116.73 48.88 98.65 40 78 40a62.07 62.07 0 0 0-62 62c0 70 103.79 126.66 108.21 129a8 8 0 0 0 7.58 0C136.21 228.66 240 172 240 102a62.07 62.07 0 0 0-62-62m-50 174.8c-18.26-10.64-96-59.11-96-112.8a46.06 46.06 0 0 1 46-46c19.45 0 35.78 10.36 42.6 27a8 8 0 0 0 14.8 0c6.82-16.67 23.15-27 42.6-27a46.06 46.06 0 0 1 46 46c0 53.61-77.76 102.15-96 112.8"></path></svg><span class="sr-only">赞</span>40</li><li class="inline-flex items-center gap-1" title="收藏：3"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M184 32H72a16 16 0 0 0-16 16v176a8 8 0 0 0 12.24 6.78L128 193.43l59.77 37.35A8 8 0 0 0 200 224V48a16 16 0 0 0-16-16m0 177.57l-51.77-32.35a8 8 0 0 0-8.48 0L72 209.57V48h112Z"></path></svg><span class="sr-only">收藏</span>3</li>
+        </ul>
+      </div>
+      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-4.5 font-medium"><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-01T10:00:00.000Z" title="发布：2026/11/1 18:00:00"><span class="text-dimmed">发布</span> 13 天前</time><span class="text-dimmed opacity-50">·</span><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-14T22:18:54.205Z" title="回复：2026/11/15 06:18:54"><span class="text-dimmed">回复</span> 1 小时前</time></div>
+    </article><article class="group relative isolate grid min-w-0 grid-cols-1 min-h-46 gap-3 py-5 px-3.5 desktop:px-5 rounded-lg bg-(--ui-card-translucent)">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div class="flex min-w-0 flex-1 items-start gap-2">
+            
+            <h2 title="PickCat 创作者等级" class="min-w-0 text-base leading-[1.4] font-extrabold text-default desktop:text-[17px]">
+              <a href="/forum/post/t5" class="block after:absolute after:inset-0 after:z-10 after:rounded-lg focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-primary"><span class="line-clamp-2">PickCat 创作者等级</span></a>
+            </h2>
+          </div>
+        </div>
+        <div class="mt-1 flex flex-wrap gap-x-5 gap-y-1"><a href="/forum/category/creative-works" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#创作与作品</a><a href="/forum/category/box" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#神奇代码岛</a><a href="/forum/category/events-competitions" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#活动与赛事</a></div>
+        <p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">这里是一段帖子摘要，用来占位展示两行截断的效果，长度大概和站内真实摘要接近，方便看排版。</p>
+      </div>
+      <div class="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs leading-4.5 text-dimmed">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 font-medium">
+          <a href="/profile/u5" class="relative z-20 flex min-w-0 items-center gap-1.5">
+            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">旁</span>
+            <span title="旁观者jers" class="min-w-0 truncate font-semibold text-muted">旁观者jers</span>
+          </a>
+          
+        </div>
+        <ul aria-label="帖子数据" class="ml-auto flex shrink-0 items-center gap-3.5 font-normal">
+          <li class="inline-flex items-center gap-1" title="回复：56"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M128 24a104 104 0 0 0-91.82 152.88l-11.35 34.05a16 16 0 0 0 20.24 20.24l34.05-11.35A104 104 0 1 0 128 24m0 192a87.87 87.87 0 0 1-44.06-11.81a8 8 0 0 0-6.54-.67L40 216l12.47-37.4a8 8 0 0 0-.66-6.54A88 88 0 1 1 128 216"></path></svg><span class="sr-only">回复</span>56</li><li class="inline-flex items-center gap-1" title="浏览：229"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M247.31 124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57 61.26 162.88 48 128 48S61.43 61.26 36.34 86.35C17.51 105.18 9 124 8.69 124.76a8 8 0 0 0 0 6.5c.35.79 8.82 19.57 27.65 38.4C61.43 194.74 93.12 208 128 208s66.57-13.26 91.66-38.34c18.83-18.83 27.3-37.61 27.65-38.4a8 8 0 0 0 0-6.5M128 192c-30.78 0-57.67-11.19-79.93-33.25A133.5 133.5 0 0 1 25 128a133.3 133.3 0 0 1 23.07-30.75C70.33 75.19 97.22 64 128 64s57.67 11.19 79.93 33.25A133.5 133.5 0 0 1 231.05 128c-7.21 13.46-38.62 64-103.05 64m0-112a48 48 0 1 0 48 48a48.05 48.05 0 0 0-48-48m0 80a32 32 0 1 1 32-32a32 32 0 0 1-32 32"></path></svg><span class="sr-only">浏览</span>229</li><li class="inline-flex items-center gap-1" title="赞：40"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M178 40c-20.65 0-38.73 8.88-50 23.89C116.73 48.88 98.65 40 78 40a62.07 62.07 0 0 0-62 62c0 70 103.79 126.66 108.21 129a8 8 0 0 0 7.58 0C136.21 228.66 240 172 240 102a62.07 62.07 0 0 0-62-62m-50 174.8c-18.26-10.64-96-59.11-96-112.8a46.06 46.06 0 0 1 46-46c19.45 0 35.78 10.36 42.6 27a8 8 0 0 0 14.8 0c6.82-16.67 23.15-27 42.6-27a46.06 46.06 0 0 1 46 46c0 53.61-77.76 102.15-96 112.8"></path></svg><span class="sr-only">赞</span>40</li><li class="inline-flex items-center gap-1" title="收藏：3"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M184 32H72a16 16 0 0 0-16 16v176a8 8 0 0 0 12.24 6.78L128 193.43l59.77 37.35A8 8 0 0 0 200 224V48a16 16 0 0 0-16-16m0 177.57l-51.77-32.35a8 8 0 0 0-8.48 0L72 209.57V48h112Z"></path></svg><span class="sr-only">收藏</span>3</li>
+        </ul>
+      </div>
+      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-4.5 font-medium"><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-06T10:00:00.000Z" title="发布：2026/11/6 18:00:00"><span class="text-dimmed">发布</span> 8 天前</time><span class="text-dimmed opacity-50">·</span><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-14T17:18:54.205Z" title="回复：2026/11/15 01:18:54"><span class="text-dimmed">回复</span> 6 小时前</time></div>
+    </article><article class="group relative isolate grid min-w-0 grid-cols-1 min-h-46 gap-3 py-5 px-3.5 desktop:px-5 rounded-lg bg-(--ui-card-translucent)">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div class="flex min-w-0 flex-1 items-start gap-2">
+            
+            <h2 title="PickCat 创作者等级" class="min-w-0 text-base leading-[1.4] font-extrabold text-default desktop:text-[17px]">
+              <a href="/forum/post/t10" class="block after:absolute after:inset-0 after:z-10 after:rounded-lg focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-primary"><span class="line-clamp-2">PickCat 创作者等级</span></a>
+            </h2>
+          </div>
+        </div>
+        <div class="mt-1 flex flex-wrap gap-x-5 gap-y-1"><a href="/forum/category/creative-works" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#创作与作品</a><a href="/forum/category/box" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#神奇代码岛</a></div>
+        <p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">这里是一段帖子摘要，用来占位展示两行截断的效果，长度大概和站内真实摘要接近，方便看排版。</p>
+      </div>
+      <div class="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs leading-4.5 text-dimmed">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 font-medium">
+          <a href="/profile/u10" class="relative z-20 flex min-w-0 items-center gap-1.5">
+            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">旁</span>
+            <span title="旁观者jers" class="min-w-0 truncate font-semibold text-muted">旁观者jers</span>
+          </a>
+          
+        </div>
+        <ul aria-label="帖子数据" class="ml-auto flex shrink-0 items-center gap-3.5 font-normal">
+          <li class="inline-flex items-center gap-1" title="回复：56"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M128 24a104 104 0 0 0-91.82 152.88l-11.35 34.05a16 16 0 0 0 20.24 20.24l34.05-11.35A104 104 0 1 0 128 24m0 192a87.87 87.87 0 0 1-44.06-11.81a8 8 0 0 0-6.54-.67L40 216l12.47-37.4a8 8 0 0 0-.66-6.54A88 88 0 1 1 128 216"></path></svg><span class="sr-only">回复</span>56</li><li class="inline-flex items-center gap-1" title="浏览：229"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M247.31 124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57 61.26 162.88 48 128 48S61.43 61.26 36.34 86.35C17.51 105.18 9 124 8.69 124.76a8 8 0 0 0 0 6.5c.35.79 8.82 19.57 27.65 38.4C61.43 194.74 93.12 208 128 208s66.57-13.26 91.66-38.34c18.83-18.83 27.3-37.61 27.65-38.4a8 8 0 0 0 0-6.5M128 192c-30.78 0-57.67-11.19-79.93-33.25A133.5 133.5 0 0 1 25 128a133.3 133.3 0 0 1 23.07-30.75C70.33 75.19 97.22 64 128 64s57.67 11.19 79.93 33.25A133.5 133.5 0 0 1 231.05 128c-7.21 13.46-38.62 64-103.05 64m0-112a48 48 0 1 0 48 48a48.05 48.05 0 0 0-48-48m0 80a32 32 0 1 1 32-32a32 32 0 0 1-32 32"></path></svg><span class="sr-only">浏览</span>229</li><li class="inline-flex items-center gap-1" title="赞：40"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M178 40c-20.65 0-38.73 8.88-50 23.89C116.73 48.88 98.65 40 78 40a62.07 62.07 0 0 0-62 62c0 70 103.79 126.66 108.21 129a8 8 0 0 0 7.58 0C136.21 228.66 240 172 240 102a62.07 62.07 0 0 0-62-62m-50 174.8c-18.26-10.64-96-59.11-96-112.8a46.06 46.06 0 0 1 46-46c19.45 0 35.78 10.36 42.6 27a8 8 0 0 0 14.8 0c6.82-16.67 23.15-27 42.6-27a46.06 46.06 0 0 1 46 46c0 53.61-77.76 102.15-96 112.8"></path></svg><span class="sr-only">赞</span>40</li><li class="inline-flex items-center gap-1" title="收藏：3"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M184 32H72a16 16 0 0 0-16 16v176a8 8 0 0 0 12.24 6.78L128 193.43l59.77 37.35A8 8 0 0 0 200 224V48a16 16 0 0 0-16-16m0 177.57l-51.77-32.35a8 8 0 0 0-8.48 0L72 209.57V48h112Z"></path></svg><span class="sr-only">收藏</span>3</li>
+        </ul>
+      </div>
+      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-4.5 font-medium"><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-02T10:00:00.000Z" title="发布：2026/11/2 18:00:00"><span class="text-dimmed">发布</span> 12 天前</time><span class="text-dimmed opacity-50">·</span><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-14T12:18:54.205Z" title="回复：2026/11/14 20:18:54"><span class="text-dimmed">回复</span> 11 小时前</time></div>
+    </article><article class="group relative isolate grid min-w-0 grid-cols-1 min-h-46 gap-3 py-5 px-3.5 desktop:px-5 rounded-lg bg-(--ui-card-translucent)">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div class="flex min-w-0 flex-1 items-start gap-2">
+            
+            <h2 title="神岛即将停运，但 BOX3 本地引擎他来了！" class="min-w-0 text-base leading-[1.4] font-extrabold text-default desktop:text-[17px]">
+              <a href="/forum/post/t1" class="block after:absolute after:inset-0 after:z-10 after:rounded-lg focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-primary"><span class="line-clamp-2">神岛即将停运，但 BOX3 本地引擎他来了！</span></a>
+            </h2>
+          </div>
+        </div>
+        <div class="mt-1 flex flex-wrap gap-x-5 gap-y-1"><a href="/forum/category/creative-works" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#创作与作品</a><a href="/forum/category/box" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#神奇代码岛</a></div>
+        <p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">这里是一段帖子摘要，用来占位展示两行截断的效果，长度大概和站内真实摘要接近，方便看排版。</p>
+      </div>
+      <div class="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs leading-4.5 text-dimmed">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 font-medium">
+          <a href="/profile/u1" class="relative z-20 flex min-w-0 items-center gap-1.5">
+            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">吉</span>
+            <span title="吉吉喵" class="min-w-0 truncate font-semibold text-muted">吉吉喵</span>
+          </a>
+          
+        </div>
+        <ul aria-label="帖子数据" class="ml-auto flex shrink-0 items-center gap-3.5 font-normal">
+          <li class="inline-flex items-center gap-1" title="回复：112"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M128 24a104 104 0 0 0-91.82 152.88l-11.35 34.05a16 16 0 0 0 20.24 20.24l34.05-11.35A104 104 0 1 0 128 24m0 192a87.87 87.87 0 0 1-44.06-11.81a8 8 0 0 0-6.54-.67L40 216l12.47-37.4a8 8 0 0 0-.66-6.54A88 88 0 1 1 128 216"></path></svg><span class="sr-only">回复</span>112</li><li class="inline-flex items-center gap-1" title="浏览：417"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M247.31 124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57 61.26 162.88 48 128 48S61.43 61.26 36.34 86.35C17.51 105.18 9 124 8.69 124.76a8 8 0 0 0 0 6.5c.35.79 8.82 19.57 27.65 38.4C61.43 194.74 93.12 208 128 208s66.57-13.26 91.66-38.34c18.83-18.83 27.3-37.61 27.65-38.4a8 8 0 0 0 0-6.5M128 192c-30.78 0-57.67-11.19-79.93-33.25A133.5 133.5 0 0 1 25 128a133.3 133.3 0 0 1 23.07-30.75C70.33 75.19 97.22 64 128 64s57.67 11.19 79.93 33.25A133.5 133.5 0 0 1 231.05 128c-7.21 13.46-38.62 64-103.05 64m0-112a48 48 0 1 0 48 48a48.05 48.05 0 0 0-48-48m0 80a32 32 0 1 1 32-32a32 32 0 0 1-32 32"></path></svg><span class="sr-only">浏览</span>417</li><li class="inline-flex items-center gap-1" title="赞：36"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M178 40c-20.65 0-38.73 8.88-50 23.89C116.73 48.88 98.65 40 78 40a62.07 62.07 0 0 0-62 62c0 70 103.79 126.66 108.21 129a8 8 0 0 0 7.58 0C136.21 228.66 240 172 240 102a62.07 62.07 0 0 0-62-62m-50 174.8c-18.26-10.64-96-59.11-96-112.8a46.06 46.06 0 0 1 46-46c19.45 0 35.78 10.36 42.6 27a8 8 0 0 0 14.8 0c6.82-16.67 23.15-27 42.6-27a46.06 46.06 0 0 1 46 46c0 53.61-77.76 102.15-96 112.8"></path></svg><span class="sr-only">赞</span>36</li><li class="inline-flex items-center gap-1" title="收藏：8"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M184 32H72a16 16 0 0 0-16 16v176a8 8 0 0 0 12.24 6.78L128 193.43l59.77 37.35A8 8 0 0 0 200 224V48a16 16 0 0 0-16-16m0 177.57l-51.77-32.35a8 8 0 0 0-8.48 0L72 209.57V48h112Z"></path></svg><span class="sr-only">收藏</span>8</li>
+        </ul>
+      </div>
+      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-4.5 font-medium"><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-02T10:00:00.000Z" title="发布：2026/11/2 18:00:00"><span class="text-dimmed">发布</span> 12 天前</time><span class="text-dimmed opacity-50">·</span><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-14T21:18:54.205Z" title="回复：2026/11/15 05:18:54"><span class="text-dimmed">回复</span> 2 小时前</time></div>
+    </article><article class="group relative isolate grid min-w-0 grid-cols-1 min-h-46 gap-3 py-5 px-3.5 desktop:px-5 rounded-lg bg-(--ui-card-translucent)">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div class="flex min-w-0 flex-1 items-start gap-2">
+            
+            <h2 title="神岛即将停运，但 BOX3 本地引擎他来了！" class="min-w-0 text-base leading-[1.4] font-extrabold text-default desktop:text-[17px]">
+              <a href="/forum/post/t6" class="block after:absolute after:inset-0 after:z-10 after:rounded-lg focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-primary"><span class="line-clamp-2">神岛即将停运，但 BOX3 本地引擎他来了！</span></a>
+            </h2>
+          </div>
+        </div>
+        <div class="mt-1 flex flex-wrap gap-x-5 gap-y-1"><a href="/forum/category/creative-works" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#创作与作品</a></div>
+        <p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">这里是一段帖子摘要，用来占位展示两行截断的效果，长度大概和站内真实摘要接近，方便看排版。</p>
+      </div>
+      <div class="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs leading-4.5 text-dimmed">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 font-medium">
+          <a href="/profile/u6" class="relative z-20 flex min-w-0 items-center gap-1.5">
+            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">吉</span>
+            <span title="吉吉喵" class="min-w-0 truncate font-semibold text-muted">吉吉喵</span>
+          </a>
+          
+        </div>
+        <ul aria-label="帖子数据" class="ml-auto flex shrink-0 items-center gap-3.5 font-normal">
+          <li class="inline-flex items-center gap-1" title="回复：112"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M128 24a104 104 0 0 0-91.82 152.88l-11.35 34.05a16 16 0 0 0 20.24 20.24l34.05-11.35A104 104 0 1 0 128 24m0 192a87.87 87.87 0 0 1-44.06-11.81a8 8 0 0 0-6.54-.67L40 216l12.47-37.4a8 8 0 0 0-.66-6.54A88 88 0 1 1 128 216"></path></svg><span class="sr-only">回复</span>112</li><li class="inline-flex items-center gap-1" title="浏览：417"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M247.31 124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57 61.26 162.88 48 128 48S61.43 61.26 36.34 86.35C17.51 105.18 9 124 8.69 124.76a8 8 0 0 0 0 6.5c.35.79 8.82 19.57 27.65 38.4C61.43 194.74 93.12 208 128 208s66.57-13.26 91.66-38.34c18.83-18.83 27.3-37.61 27.65-38.4a8 8 0 0 0 0-6.5M128 192c-30.78 0-57.67-11.19-79.93-33.25A133.5 133.5 0 0 1 25 128a133.3 133.3 0 0 1 23.07-30.75C70.33 75.19 97.22 64 128 64s57.67 11.19 79.93 33.25A133.5 133.5 0 0 1 231.05 128c-7.21 13.46-38.62 64-103.05 64m0-112a48 48 0 1 0 48 48a48.05 48.05 0 0 0-48-48m0 80a32 32 0 1 1 32-32a32 32 0 0 1-32 32"></path></svg><span class="sr-only">浏览</span>417</li><li class="inline-flex items-center gap-1" title="赞：36"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M178 40c-20.65 0-38.73 8.88-50 23.89C116.73 48.88 98.65 40 78 40a62.07 62.07 0 0 0-62 62c0 70 103.79 126.66 108.21 129a8 8 0 0 0 7.58 0C136.21 228.66 240 172 240 102a62.07 62.07 0 0 0-62-62m-50 174.8c-18.26-10.64-96-59.11-96-112.8a46.06 46.06 0 0 1 46-46c19.45 0 35.78 10.36 42.6 27a8 8 0 0 0 14.8 0c6.82-16.67 23.15-27 42.6-27a46.06 46.06 0 0 1 46 46c0 53.61-77.76 102.15-96 112.8"></path></svg><span class="sr-only">赞</span>36</li><li class="inline-flex items-center gap-1" title="收藏：8"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M184 32H72a16 16 0 0 0-16 16v176a8 8 0 0 0 12.24 6.78L128 193.43l59.77 37.35A8 8 0 0 0 200 224V48a16 16 0 0 0-16-16m0 177.57l-51.77-32.35a8 8 0 0 0-8.48 0L72 209.57V48h112Z"></path></svg><span class="sr-only">收藏</span>8</li>
+        </ul>
+      </div>
+      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-4.5 font-medium"><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-07T10:00:00.000Z" title="发布：2026/11/7 18:00:00"><span class="text-dimmed">发布</span> 7 天前</time><span class="text-dimmed opacity-50">·</span><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-14T16:18:54.205Z" title="回复：2026/11/15 00:18:54"><span class="text-dimmed">回复</span> 7 小时前</time></div>
+    </article><article class="group relative isolate grid min-w-0 grid-cols-1 min-h-46 gap-3 py-5 px-3.5 desktop:px-5 rounded-lg bg-(--ui-card-translucent)">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div class="flex min-w-0 flex-1 items-start gap-2">
+            
+            <h2 title="神岛即将停运，但 BOX3 本地引擎他来了！" class="min-w-0 text-base leading-[1.4] font-extrabold text-default desktop:text-[17px]">
+              <a href="/forum/post/t11" class="block after:absolute after:inset-0 after:z-10 after:rounded-lg focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-primary"><span class="line-clamp-2">神岛即将停运，但 BOX3 本地引擎他来了！</span></a>
+            </h2>
+          </div>
+        </div>
+        <div class="mt-1 flex flex-wrap gap-x-5 gap-y-1"><a href="/forum/category/creative-works" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#创作与作品</a><a href="/forum/category/box" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#神奇代码岛</a><a href="/forum/category/events-competitions" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#活动与赛事</a></div>
+        <p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">这里是一段帖子摘要，用来占位展示两行截断的效果，长度大概和站内真实摘要接近，方便看排版。</p>
+      </div>
+      <div class="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs leading-4.5 text-dimmed">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 font-medium">
+          <a href="/profile/u11" class="relative z-20 flex min-w-0 items-center gap-1.5">
+            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">吉</span>
+            <span title="吉吉喵" class="min-w-0 truncate font-semibold text-muted">吉吉喵</span>
+          </a>
+          
+        </div>
+        <ul aria-label="帖子数据" class="ml-auto flex shrink-0 items-center gap-3.5 font-normal">
+          <li class="inline-flex items-center gap-1" title="回复：112"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M128 24a104 104 0 0 0-91.82 152.88l-11.35 34.05a16 16 0 0 0 20.24 20.24l34.05-11.35A104 104 0 1 0 128 24m0 192a87.87 87.87 0 0 1-44.06-11.81a8 8 0 0 0-6.54-.67L40 216l12.47-37.4a8 8 0 0 0-.66-6.54A88 88 0 1 1 128 216"></path></svg><span class="sr-only">回复</span>112</li><li class="inline-flex items-center gap-1" title="浏览：417"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M247.31 124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57 61.26 162.88 48 128 48S61.43 61.26 36.34 86.35C17.51 105.18 9 124 8.69 124.76a8 8 0 0 0 0 6.5c.35.79 8.82 19.57 27.65 38.4C61.43 194.74 93.12 208 128 208s66.57-13.26 91.66-38.34c18.83-18.83 27.3-37.61 27.65-38.4a8 8 0 0 0 0-6.5M128 192c-30.78 0-57.67-11.19-79.93-33.25A133.5 133.5 0 0 1 25 128a133.3 133.3 0 0 1 23.07-30.75C70.33 75.19 97.22 64 128 64s57.67 11.19 79.93 33.25A133.5 133.5 0 0 1 231.05 128c-7.21 13.46-38.62 64-103.05 64m0-112a48 48 0 1 0 48 48a48.05 48.05 0 0 0-48-48m0 80a32 32 0 1 1 32-32a32 32 0 0 1-32 32"></path></svg><span class="sr-only">浏览</span>417</li><li class="inline-flex items-center gap-1" title="赞：36"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M178 40c-20.65 0-38.73 8.88-50 23.89C116.73 48.88 98.65 40 78 40a62.07 62.07 0 0 0-62 62c0 70 103.79 126.66 108.21 129a8 8 0 0 0 7.58 0C136.21 228.66 240 172 240 102a62.07 62.07 0 0 0-62-62m-50 174.8c-18.26-10.64-96-59.11-96-112.8a46.06 46.06 0 0 1 46-46c19.45 0 35.78 10.36 42.6 27a8 8 0 0 0 14.8 0c6.82-16.67 23.15-27 42.6-27a46.06 46.06 0 0 1 46 46c0 53.61-77.76 102.15-96 112.8"></path></svg><span class="sr-only">赞</span>36</li><li class="inline-flex items-center gap-1" title="收藏：8"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M184 32H72a16 16 0 0 0-16 16v176a8 8 0 0 0 12.24 6.78L128 193.43l59.77 37.35A8 8 0 0 0 200 224V48a16 16 0 0 0-16-16m0 177.57l-51.77-32.35a8 8 0 0 0-8.48 0L72 209.57V48h112Z"></path></svg><span class="sr-only">收藏</span>8</li>
+        </ul>
+      </div>
+      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-4.5 font-medium"><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-03T10:00:00.000Z" title="发布：2026/11/3 18:00:00"><span class="text-dimmed">发布</span> 11 天前</time><span class="text-dimmed opacity-50">·</span><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-14T11:18:54.205Z" title="回复：2026/11/14 19:18:54"><span class="text-dimmed">回复</span> 12 小时前</time></div>
+    </article><article class="group relative isolate grid min-w-0 grid-cols-1 min-h-46 gap-3 py-5 px-3.5 desktop:px-5 rounded-lg bg-(--ui-card-translucent)">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div class="flex min-w-0 flex-1 items-start gap-2">
+            
+            <h2 title="【UI 优化月】分享你对 PICKCAT 界面的看法与改动建议" class="min-w-0 text-base leading-[1.4] font-extrabold text-default desktop:text-[17px]">
+              <a href="/forum/post/t2" class="block after:absolute after:inset-0 after:z-10 after:rounded-lg focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-primary"><span class="line-clamp-2">【UI 优化月】分享你对 PICKCAT 界面的看法与改动建议</span></a>
+            </h2>
+          </div>
+        </div>
+        <div class="mt-1 flex flex-wrap gap-x-5 gap-y-1"><a href="/forum/category/creative-works" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#创作与作品</a><a href="/forum/category/box" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#神奇代码岛</a><a href="/forum/category/events-competitions" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#活动与赛事</a></div>
+        <p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">这里是一段帖子摘要，用来占位展示两行截断的效果，长度大概和站内真实摘要接近，方便看排版。</p>
+      </div>
+      <div class="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs leading-4.5 text-dimmed">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 font-medium">
+          <a href="/profile/u2" class="relative z-20 flex min-w-0 items-center gap-1.5">
+            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">z</span>
+            <span title="zaona" class="min-w-0 truncate font-semibold text-muted">zaona</span>
+          </a>
+          
+        </div>
+        <ul aria-label="帖子数据" class="ml-auto flex shrink-0 items-center gap-3.5 font-normal">
+          <li class="inline-flex items-center gap-1" title="回复：276"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M128 24a104 104 0 0 0-91.82 152.88l-11.35 34.05a16 16 0 0 0 20.24 20.24l34.05-11.35A104 104 0 1 0 128 24m0 192a87.87 87.87 0 0 1-44.06-11.81a8 8 0 0 0-6.54-.67L40 216l12.47-37.4a8 8 0 0 0-.66-6.54A88 88 0 1 1 128 216"></path></svg><span class="sr-only">回复</span>276</li><li class="inline-flex items-center gap-1" title="浏览：296"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M247.31 124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57 61.26 162.88 48 128 48S61.43 61.26 36.34 86.35C17.51 105.18 9 124 8.69 124.76a8 8 0 0 0 0 6.5c.35.79 8.82 19.57 27.65 38.4C61.43 194.74 93.12 208 128 208s66.57-13.26 91.66-38.34c18.83-18.83 27.3-37.61 27.65-38.4a8 8 0 0 0 0-6.5M128 192c-30.78 0-57.67-11.19-79.93-33.25A133.5 133.5 0 0 1 25 128a133.3 133.3 0 0 1 23.07-30.75C70.33 75.19 97.22 64 128 64s57.67 11.19 79.93 33.25A133.5 133.5 0 0 1 231.05 128c-7.21 13.46-38.62 64-103.05 64m0-112a48 48 0 1 0 48 48a48.05 48.05 0 0 0-48-48m0 80a32 32 0 1 1 32-32a32 32 0 0 1-32 32"></path></svg><span class="sr-only">浏览</span>296</li><li class="inline-flex items-center gap-1" title="赞：30"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M178 40c-20.65 0-38.73 8.88-50 23.89C116.73 48.88 98.65 40 78 40a62.07 62.07 0 0 0-62 62c0 70 103.79 126.66 108.21 129a8 8 0 0 0 7.58 0C136.21 228.66 240 172 240 102a62.07 62.07 0 0 0-62-62m-50 174.8c-18.26-10.64-96-59.11-96-112.8a46.06 46.06 0 0 1 46-46c19.45 0 35.78 10.36 42.6 27a8 8 0 0 0 14.8 0c6.82-16.67 23.15-27 42.6-27a46.06 46.06 0 0 1 46 46c0 53.61-77.76 102.15-96 112.8"></path></svg><span class="sr-only">赞</span>30</li><li class="inline-flex items-center gap-1" title="收藏：12"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M184 32H72a16 16 0 0 0-16 16v176a8 8 0 0 0 12.24 6.78L128 193.43l59.77 37.35A8 8 0 0 0 200 224V48a16 16 0 0 0-16-16m0 177.57l-51.77-32.35a8 8 0 0 0-8.48 0L72 209.57V48h112Z"></path></svg><span class="sr-only">收藏</span>12</li>
+        </ul>
+      </div>
+      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-4.5 font-medium"><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-03T10:00:00.000Z" title="发布：2026/11/3 18:00:00"><span class="text-dimmed">发布</span> 11 天前</time><span class="text-dimmed opacity-50">·</span><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-14T20:18:54.205Z" title="回复：2026/11/15 04:18:54"><span class="text-dimmed">回复</span> 3 小时前</time></div>
+    </article><article class="group relative isolate grid min-w-0 grid-cols-1 min-h-46 gap-3 py-5 px-3.5 desktop:px-5 rounded-lg bg-(--ui-card-translucent)">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div class="flex min-w-0 flex-1 items-start gap-2">
+            
+            <h2 title="【UI 优化月】分享你对 PICKCAT 界面的看法与改动建议" class="min-w-0 text-base leading-[1.4] font-extrabold text-default desktop:text-[17px]">
+              <a href="/forum/post/t7" class="block after:absolute after:inset-0 after:z-10 after:rounded-lg focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-primary"><span class="line-clamp-2">【UI 优化月】分享你对 PICKCAT 界面的看法与改动建议</span></a>
+            </h2>
+          </div>
+        </div>
+        <div class="mt-1 flex flex-wrap gap-x-5 gap-y-1"><a href="/forum/category/creative-works" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#创作与作品</a><a href="/forum/category/box" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#神奇代码岛</a></div>
+        <p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">这里是一段帖子摘要，用来占位展示两行截断的效果，长度大概和站内真实摘要接近，方便看排版。</p>
+      </div>
+      <div class="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs leading-4.5 text-dimmed">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 font-medium">
+          <a href="/profile/u7" class="relative z-20 flex min-w-0 items-center gap-1.5">
+            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">z</span>
+            <span title="zaona" class="min-w-0 truncate font-semibold text-muted">zaona</span>
+          </a>
+          
+        </div>
+        <ul aria-label="帖子数据" class="ml-auto flex shrink-0 items-center gap-3.5 font-normal">
+          <li class="inline-flex items-center gap-1" title="回复：276"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M128 24a104 104 0 0 0-91.82 152.88l-11.35 34.05a16 16 0 0 0 20.24 20.24l34.05-11.35A104 104 0 1 0 128 24m0 192a87.87 87.87 0 0 1-44.06-11.81a8 8 0 0 0-6.54-.67L40 216l12.47-37.4a8 8 0 0 0-.66-6.54A88 88 0 1 1 128 216"></path></svg><span class="sr-only">回复</span>276</li><li class="inline-flex items-center gap-1" title="浏览：296"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M247.31 124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57 61.26 162.88 48 128 48S61.43 61.26 36.34 86.35C17.51 105.18 9 124 8.69 124.76a8 8 0 0 0 0 6.5c.35.79 8.82 19.57 27.65 38.4C61.43 194.74 93.12 208 128 208s66.57-13.26 91.66-38.34c18.83-18.83 27.3-37.61 27.65-38.4a8 8 0 0 0 0-6.5M128 192c-30.78 0-57.67-11.19-79.93-33.25A133.5 133.5 0 0 1 25 128a133.3 133.3 0 0 1 23.07-30.75C70.33 75.19 97.22 64 128 64s57.67 11.19 79.93 33.25A133.5 133.5 0 0 1 231.05 128c-7.21 13.46-38.62 64-103.05 64m0-112a48 48 0 1 0 48 48a48.05 48.05 0 0 0-48-48m0 80a32 32 0 1 1 32-32a32 32 0 0 1-32 32"></path></svg><span class="sr-only">浏览</span>296</li><li class="inline-flex items-center gap-1" title="赞：30"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M178 40c-20.65 0-38.73 8.88-50 23.89C116.73 48.88 98.65 40 78 40a62.07 62.07 0 0 0-62 62c0 70 103.79 126.66 108.21 129a8 8 0 0 0 7.58 0C136.21 228.66 240 172 240 102a62.07 62.07 0 0 0-62-62m-50 174.8c-18.26-10.64-96-59.11-96-112.8a46.06 46.06 0 0 1 46-46c19.45 0 35.78 10.36 42.6 27a8 8 0 0 0 14.8 0c6.82-16.67 23.15-27 42.6-27a46.06 46.06 0 0 1 46 46c0 53.61-77.76 102.15-96 112.8"></path></svg><span class="sr-only">赞</span>30</li><li class="inline-flex items-center gap-1" title="收藏：12"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M184 32H72a16 16 0 0 0-16 16v176a8 8 0 0 0 12.24 6.78L128 193.43l59.77 37.35A8 8 0 0 0 200 224V48a16 16 0 0 0-16-16m0 177.57l-51.77-32.35a8 8 0 0 0-8.48 0L72 209.57V48h112Z"></path></svg><span class="sr-only">收藏</span>12</li>
+        </ul>
+      </div>
+      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-4.5 font-medium"><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-08T10:00:00.000Z" title="发布：2026/11/8 18:00:00"><span class="text-dimmed">发布</span> 6 天前</time><span class="text-dimmed opacity-50">·</span><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-14T15:18:54.205Z" title="回复：2026/11/14 23:18:54"><span class="text-dimmed">回复</span> 8 小时前</time></div>
+    </article><article class="group relative isolate grid min-w-0 grid-cols-1 min-h-46 gap-3 py-5 px-3.5 desktop:px-5 rounded-lg bg-(--ui-card-translucent)">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div class="flex min-w-0 flex-1 items-start gap-2">
+            
+            <h2 title="【UI 优化月】分享你对 PICKCAT 界面的看法与改动建议" class="min-w-0 text-base leading-[1.4] font-extrabold text-default desktop:text-[17px]">
+              <a href="/forum/post/t12" class="block after:absolute after:inset-0 after:z-10 after:rounded-lg focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-primary"><span class="line-clamp-2">【UI 优化月】分享你对 PICKCAT 界面的看法与改动建议</span></a>
+            </h2>
+          </div>
+        </div>
+        <div class="mt-1 flex flex-wrap gap-x-5 gap-y-1"><a href="/forum/category/creative-works" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#创作与作品</a></div>
+        <p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">这里是一段帖子摘要，用来占位展示两行截断的效果，长度大概和站内真实摘要接近，方便看排版。</p>
+      </div>
+      <div class="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs leading-4.5 text-dimmed">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 font-medium">
+          <a href="/profile/u12" class="relative z-20 flex min-w-0 items-center gap-1.5">
+            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">z</span>
+            <span title="zaona" class="min-w-0 truncate font-semibold text-muted">zaona</span>
+          </a>
+          
+        </div>
+        <ul aria-label="帖子数据" class="ml-auto flex shrink-0 items-center gap-3.5 font-normal">
+          <li class="inline-flex items-center gap-1" title="回复：276"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M128 24a104 104 0 0 0-91.82 152.88l-11.35 34.05a16 16 0 0 0 20.24 20.24l34.05-11.35A104 104 0 1 0 128 24m0 192a87.87 87.87 0 0 1-44.06-11.81a8 8 0 0 0-6.54-.67L40 216l12.47-37.4a8 8 0 0 0-.66-6.54A88 88 0 1 1 128 216"></path></svg><span class="sr-only">回复</span>276</li><li class="inline-flex items-center gap-1" title="浏览：296"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M247.31 124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57 61.26 162.88 48 128 48S61.43 61.26 36.34 86.35C17.51 105.18 9 124 8.69 124.76a8 8 0 0 0 0 6.5c.35.79 8.82 19.57 27.65 38.4C61.43 194.74 93.12 208 128 208s66.57-13.26 91.66-38.34c18.83-18.83 27.3-37.61 27.65-38.4a8 8 0 0 0 0-6.5M128 192c-30.78 0-57.67-11.19-79.93-33.25A133.5 133.5 0 0 1 25 128a133.3 133.3 0 0 1 23.07-30.75C70.33 75.19 97.22 64 128 64s57.67 11.19 79.93 33.25A133.5 133.5 0 0 1 231.05 128c-7.21 13.46-38.62 64-103.05 64m0-112a48 48 0 1 0 48 48a48.05 48.05 0 0 0-48-48m0 80a32 32 0 1 1 32-32a32 32 0 0 1-32 32"></path></svg><span class="sr-only">浏览</span>296</li><li class="inline-flex items-center gap-1" title="赞：30"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M178 40c-20.65 0-38.73 8.88-50 23.89C116.73 48.88 98.65 40 78 40a62.07 62.07 0 0 0-62 62c0 70 103.79 126.66 108.21 129a8 8 0 0 0 7.58 0C136.21 228.66 240 172 240 102a62.07 62.07 0 0 0-62-62m-50 174.8c-18.26-10.64-96-59.11-96-112.8a46.06 46.06 0 0 1 46-46c19.45 0 35.78 10.36 42.6 27a8 8 0 0 0 14.8 0c6.82-16.67 23.15-27 42.6-27a46.06 46.06 0 0 1 46 46c0 53.61-77.76 102.15-96 112.8"></path></svg><span class="sr-only">赞</span>30</li><li class="inline-flex items-center gap-1" title="收藏：12"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M184 32H72a16 16 0 0 0-16 16v176a8 8 0 0 0 12.24 6.78L128 193.43l59.77 37.35A8 8 0 0 0 200 224V48a16 16 0 0 0-16-16m0 177.57l-51.77-32.35a8 8 0 0 0-8.48 0L72 209.57V48h112Z"></path></svg><span class="sr-only">收藏</span>12</li>
+        </ul>
+      </div>
+      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-4.5 font-medium"><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-04T10:00:00.000Z" title="发布：2026/11/4 18:00:00"><span class="text-dimmed">发布</span> 10 天前</time><span class="text-dimmed opacity-50">·</span><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-14T10:18:54.204Z" title="回复：2026/11/14 18:18:54"><span class="text-dimmed">回复</span> 13 小时前</time></div>
+    </article><article class="group relative isolate grid min-w-0 grid-cols-1 min-h-46 gap-3 py-5 px-3.5 desktop:px-5 rounded-lg bg-(--ui-card-translucent)">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div class="flex min-w-0 flex-1 items-start gap-2">
+            
+            <h2 title="小雪话奇思 | 假如给你 $100 token，你想做些什么？" class="min-w-0 text-base leading-[1.4] font-extrabold text-default desktop:text-[17px]">
+              <a href="/forum/post/t3" class="block after:absolute after:inset-0 after:z-10 after:rounded-lg focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-primary"><span class="line-clamp-2">小雪话奇思 | 假如给你 $100 token，你想做些什么？</span></a>
+            </h2>
+          </div>
+        </div>
+        <div class="mt-1 flex flex-wrap gap-x-5 gap-y-1"><a href="/forum/category/creative-works" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#创作与作品</a></div>
+        <p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">这里是一段帖子摘要，用来占位展示两行截断的效果，长度大概和站内真实摘要接近，方便看排版。</p>
+      </div>
+      <div class="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs leading-4.5 text-dimmed">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 font-medium">
+          <a href="/profile/u3" class="relative z-20 flex min-w-0 items-center gap-1.5">
+            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">p</span>
+            <span title="pigeonxian" class="min-w-0 truncate font-semibold text-muted">pigeonxian</span>
+          </a>
+          
+        </div>
+        <ul aria-label="帖子数据" class="ml-auto flex shrink-0 items-center gap-3.5 font-normal">
+          <li class="inline-flex items-center gap-1" title="回复：60"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M128 24a104 104 0 0 0-91.82 152.88l-11.35 34.05a16 16 0 0 0 20.24 20.24l34.05-11.35A104 104 0 1 0 128 24m0 192a87.87 87.87 0 0 1-44.06-11.81a8 8 0 0 0-6.54-.67L40 216l12.47-37.4a8 8 0 0 0-.66-6.54A88 88 0 1 1 128 216"></path></svg><span class="sr-only">回复</span>60</li><li class="inline-flex items-center gap-1" title="浏览：157"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M247.31 124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57 61.26 162.88 48 128 48S61.43 61.26 36.34 86.35C17.51 105.18 9 124 8.69 124.76a8 8 0 0 0 0 6.5c.35.79 8.82 19.57 27.65 38.4C61.43 194.74 93.12 208 128 208s66.57-13.26 91.66-38.34c18.83-18.83 27.3-37.61 27.65-38.4a8 8 0 0 0 0-6.5M128 192c-30.78 0-57.67-11.19-79.93-33.25A133.5 133.5 0 0 1 25 128a133.3 133.3 0 0 1 23.07-30.75C70.33 75.19 97.22 64 128 64s57.67 11.19 79.93 33.25A133.5 133.5 0 0 1 231.05 128c-7.21 13.46-38.62 64-103.05 64m0-112a48 48 0 1 0 48 48a48.05 48.05 0 0 0-48-48m0 80a32 32 0 1 1 32-32a32 32 0 0 1-32 32"></path></svg><span class="sr-only">浏览</span>157</li><li class="inline-flex items-center gap-1" title="赞：18"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M178 40c-20.65 0-38.73 8.88-50 23.89C116.73 48.88 98.65 40 78 40a62.07 62.07 0 0 0-62 62c0 70 103.79 126.66 108.21 129a8 8 0 0 0 7.58 0C136.21 228.66 240 172 240 102a62.07 62.07 0 0 0-62-62m-50 174.8c-18.26-10.64-96-59.11-96-112.8a46.06 46.06 0 0 1 46-46c19.45 0 35.78 10.36 42.6 27a8 8 0 0 0 14.8 0c6.82-16.67 23.15-27 42.6-27a46.06 46.06 0 0 1 46 46c0 53.61-77.76 102.15-96 112.8"></path></svg><span class="sr-only">赞</span>18</li><li class="inline-flex items-center gap-1" title="收藏：2"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M184 32H72a16 16 0 0 0-16 16v176a8 8 0 0 0 12.24 6.78L128 193.43l59.77 37.35A8 8 0 0 0 200 224V48a16 16 0 0 0-16-16m0 177.57l-51.77-32.35a8 8 0 0 0-8.48 0L72 209.57V48h112Z"></path></svg><span class="sr-only">收藏</span>2</li>
+        </ul>
+      </div>
+      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-4.5 font-medium"><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-04T10:00:00.000Z" title="发布：2026/11/4 18:00:00"><span class="text-dimmed">发布</span> 10 天前</time><span class="text-dimmed opacity-50">·</span><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-14T19:18:54.205Z" title="回复：2026/11/15 03:18:54"><span class="text-dimmed">回复</span> 4 小时前</time></div>
+    </article><article class="group relative isolate grid min-w-0 grid-cols-1 min-h-46 gap-3 py-5 px-3.5 desktop:px-5 rounded-lg bg-(--ui-card-translucent)">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div class="flex min-w-0 flex-1 items-start gap-2">
+            
+            <h2 title="小雪话奇思 | 假如给你 $100 token，你想做些什么？" class="min-w-0 text-base leading-[1.4] font-extrabold text-default desktop:text-[17px]">
+              <a href="/forum/post/t8" class="block after:absolute after:inset-0 after:z-10 after:rounded-lg focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-primary"><span class="line-clamp-2">小雪话奇思 | 假如给你 $100 token，你想做些什么？</span></a>
+            </h2>
+          </div>
+        </div>
+        <div class="mt-1 flex flex-wrap gap-x-5 gap-y-1"><a href="/forum/category/creative-works" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#创作与作品</a><a href="/forum/category/box" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#神奇代码岛</a><a href="/forum/category/events-competitions" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#活动与赛事</a></div>
+        <p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">这里是一段帖子摘要，用来占位展示两行截断的效果，长度大概和站内真实摘要接近，方便看排版。</p>
+      </div>
+      <div class="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs leading-4.5 text-dimmed">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 font-medium">
+          <a href="/profile/u8" class="relative z-20 flex min-w-0 items-center gap-1.5">
+            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">p</span>
+            <span title="pigeonxian" class="min-w-0 truncate font-semibold text-muted">pigeonxian</span>
+          </a>
+          
+        </div>
+        <ul aria-label="帖子数据" class="ml-auto flex shrink-0 items-center gap-3.5 font-normal">
+          <li class="inline-flex items-center gap-1" title="回复：60"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M128 24a104 104 0 0 0-91.82 152.88l-11.35 34.05a16 16 0 0 0 20.24 20.24l34.05-11.35A104 104 0 1 0 128 24m0 192a87.87 87.87 0 0 1-44.06-11.81a8 8 0 0 0-6.54-.67L40 216l12.47-37.4a8 8 0 0 0-.66-6.54A88 88 0 1 1 128 216"></path></svg><span class="sr-only">回复</span>60</li><li class="inline-flex items-center gap-1" title="浏览：157"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M247.31 124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57 61.26 162.88 48 128 48S61.43 61.26 36.34 86.35C17.51 105.18 9 124 8.69 124.76a8 8 0 0 0 0 6.5c.35.79 8.82 19.57 27.65 38.4C61.43 194.74 93.12 208 128 208s66.57-13.26 91.66-38.34c18.83-18.83 27.3-37.61 27.65-38.4a8 8 0 0 0 0-6.5M128 192c-30.78 0-57.67-11.19-79.93-33.25A133.5 133.5 0 0 1 25 128a133.3 133.3 0 0 1 23.07-30.75C70.33 75.19 97.22 64 128 64s57.67 11.19 79.93 33.25A133.5 133.5 0 0 1 231.05 128c-7.21 13.46-38.62 64-103.05 64m0-112a48 48 0 1 0 48 48a48.05 48.05 0 0 0-48-48m0 80a32 32 0 1 1 32-32a32 32 0 0 1-32 32"></path></svg><span class="sr-only">浏览</span>157</li><li class="inline-flex items-center gap-1" title="赞：18"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M178 40c-20.65 0-38.73 8.88-50 23.89C116.73 48.88 98.65 40 78 40a62.07 62.07 0 0 0-62 62c0 70 103.79 126.66 108.21 129a8 8 0 0 0 7.58 0C136.21 228.66 240 172 240 102a62.07 62.07 0 0 0-62-62m-50 174.8c-18.26-10.64-96-59.11-96-112.8a46.06 46.06 0 0 1 46-46c19.45 0 35.78 10.36 42.6 27a8 8 0 0 0 14.8 0c6.82-16.67 23.15-27 42.6-27a46.06 46.06 0 0 1 46 46c0 53.61-77.76 102.15-96 112.8"></path></svg><span class="sr-only">赞</span>18</li><li class="inline-flex items-center gap-1" title="收藏：2"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M184 32H72a16 16 0 0 0-16 16v176a8 8 0 0 0 12.24 6.78L128 193.43l59.77 37.35A8 8 0 0 0 200 224V48a16 16 0 0 0-16-16m0 177.57l-51.77-32.35a8 8 0 0 0-8.48 0L72 209.57V48h112Z"></path></svg><span class="sr-only">收藏</span>2</li>
+        </ul>
+      </div>
+      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-4.5 font-medium"><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-09T10:00:00.000Z" title="发布：2026/11/9 18:00:00"><span class="text-dimmed">发布</span> 5 天前</time><span class="text-dimmed opacity-50">·</span><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-14T14:18:54.205Z" title="回复：2026/11/14 22:18:54"><span class="text-dimmed">回复</span> 9 小时前</time></div>
+    </article><article class="group relative isolate grid min-w-0 grid-cols-1 min-h-46 gap-3 py-5 px-3.5 desktop:px-5 rounded-lg bg-(--ui-card-translucent)">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div class="flex min-w-0 flex-1 items-start gap-2">
+            
+            <h2 title="小雪话奇思 | 假如给你 $100 token，你想做些什么？" class="min-w-0 text-base leading-[1.4] font-extrabold text-default desktop:text-[17px]">
+              <a href="/forum/post/t13" class="block after:absolute after:inset-0 after:z-10 after:rounded-lg focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-primary"><span class="line-clamp-2">小雪话奇思 | 假如给你 $100 token，你想做些什么？</span></a>
+            </h2>
+          </div>
+        </div>
+        <div class="mt-1 flex flex-wrap gap-x-5 gap-y-1"><a href="/forum/category/creative-works" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#创作与作品</a><a href="/forum/category/box" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#神奇代码岛</a></div>
+        <p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">这里是一段帖子摘要，用来占位展示两行截断的效果，长度大概和站内真实摘要接近，方便看排版。</p>
+      </div>
+      <div class="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs leading-4.5 text-dimmed">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 font-medium">
+          <a href="/profile/u13" class="relative z-20 flex min-w-0 items-center gap-1.5">
+            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">p</span>
+            <span title="pigeonxian" class="min-w-0 truncate font-semibold text-muted">pigeonxian</span>
+          </a>
+          
+        </div>
+        <ul aria-label="帖子数据" class="ml-auto flex shrink-0 items-center gap-3.5 font-normal">
+          <li class="inline-flex items-center gap-1" title="回复：60"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M128 24a104 104 0 0 0-91.82 152.88l-11.35 34.05a16 16 0 0 0 20.24 20.24l34.05-11.35A104 104 0 1 0 128 24m0 192a87.87 87.87 0 0 1-44.06-11.81a8 8 0 0 0-6.54-.67L40 216l12.47-37.4a8 8 0 0 0-.66-6.54A88 88 0 1 1 128 216"></path></svg><span class="sr-only">回复</span>60</li><li class="inline-flex items-center gap-1" title="浏览：157"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M247.31 124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57 61.26 162.88 48 128 48S61.43 61.26 36.34 86.35C17.51 105.18 9 124 8.69 124.76a8 8 0 0 0 0 6.5c.35.79 8.82 19.57 27.65 38.4C61.43 194.74 93.12 208 128 208s66.57-13.26 91.66-38.34c18.83-18.83 27.3-37.61 27.65-38.4a8 8 0 0 0 0-6.5M128 192c-30.78 0-57.67-11.19-79.93-33.25A133.5 133.5 0 0 1 25 128a133.3 133.3 0 0 1 23.07-30.75C70.33 75.19 97.22 64 128 64s57.67 11.19 79.93 33.25A133.5 133.5 0 0 1 231.05 128c-7.21 13.46-38.62 64-103.05 64m0-112a48 48 0 1 0 48 48a48.05 48.05 0 0 0-48-48m0 80a32 32 0 1 1 32-32a32 32 0 0 1-32 32"></path></svg><span class="sr-only">浏览</span>157</li><li class="inline-flex items-center gap-1" title="赞：18"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M178 40c-20.65 0-38.73 8.88-50 23.89C116.73 48.88 98.65 40 78 40a62.07 62.07 0 0 0-62 62c0 70 103.79 126.66 108.21 129a8 8 0 0 0 7.58 0C136.21 228.66 240 172 240 102a62.07 62.07 0 0 0-62-62m-50 174.8c-18.26-10.64-96-59.11-96-112.8a46.06 46.06 0 0 1 46-46c19.45 0 35.78 10.36 42.6 27a8 8 0 0 0 14.8 0c6.82-16.67 23.15-27 42.6-27a46.06 46.06 0 0 1 46 46c0 53.61-77.76 102.15-96 112.8"></path></svg><span class="sr-only">赞</span>18</li><li class="inline-flex items-center gap-1" title="收藏：2"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M184 32H72a16 16 0 0 0-16 16v176a8 8 0 0 0 12.24 6.78L128 193.43l59.77 37.35A8 8 0 0 0 200 224V48a16 16 0 0 0-16-16m0 177.57l-51.77-32.35a8 8 0 0 0-8.48 0L72 209.57V48h112Z"></path></svg><span class="sr-only">收藏</span>2</li>
+        </ul>
+      </div>
+      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-4.5 font-medium"><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-05T10:00:00.000Z" title="发布：2026/11/5 18:00:00"><span class="text-dimmed">发布</span> 9 天前</time><span class="text-dimmed opacity-50">·</span><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-14T09:18:54.204Z" title="回复：2026/11/14 17:18:54"><span class="text-dimmed">回复</span> 14 小时前</time></div>
+    </article><article class="group relative isolate grid min-w-0 grid-cols-1 min-h-46 gap-3 py-5 px-3.5 desktop:px-5 rounded-lg bg-(--ui-card-translucent)">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div class="flex min-w-0 flex-1 items-start gap-2">
+            
+            <h2 title="为什么我觉得 boxplay 不好用" class="min-w-0 text-base leading-[1.4] font-extrabold text-default desktop:text-[17px]">
+              <a href="/forum/post/t4" class="block after:absolute after:inset-0 after:z-10 after:rounded-lg focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-primary"><span class="line-clamp-2">为什么我觉得 boxplay 不好用</span></a>
+            </h2>
+          </div>
+        </div>
+        <div class="mt-1 flex flex-wrap gap-x-5 gap-y-1"><a href="/forum/category/creative-works" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#创作与作品</a><a href="/forum/category/box" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#神奇代码岛</a></div>
+        <p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">这里是一段帖子摘要，用来占位展示两行截断的效果，长度大概和站内真实摘要接近，方便看排版。</p>
+      </div>
+      <div class="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs leading-4.5 text-dimmed">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 font-medium">
+          <a href="/profile/u4" class="relative z-20 flex min-w-0 items-center gap-1.5">
+            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">l</span>
+            <span title="lxy24" class="min-w-0 truncate font-semibold text-muted">lxy24</span>
+          </a>
+          
+        </div>
+        <ul aria-label="帖子数据" class="ml-auto flex shrink-0 items-center gap-3.5 font-normal">
+          <li class="inline-flex items-center gap-1" title="回复：0"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M128 24a104 104 0 0 0-91.82 152.88l-11.35 34.05a16 16 0 0 0 20.24 20.24l34.05-11.35A104 104 0 1 0 128 24m0 192a87.87 87.87 0 0 1-44.06-11.81a8 8 0 0 0-6.54-.67L40 216l12.47-37.4a8 8 0 0 0-.66-6.54A88 88 0 1 1 128 216"></path></svg><span class="sr-only">回复</span>0</li><li class="inline-flex items-center gap-1" title="浏览：1"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M247.31 124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57 61.26 162.88 48 128 48S61.43 61.26 36.34 86.35C17.51 105.18 9 124 8.69 124.76a8 8 0 0 0 0 6.5c.35.79 8.82 19.57 27.65 38.4C61.43 194.74 93.12 208 128 208s66.57-13.26 91.66-38.34c18.83-18.83 27.3-37.61 27.65-38.4a8 8 0 0 0 0-6.5M128 192c-30.78 0-57.67-11.19-79.93-33.25A133.5 133.5 0 0 1 25 128a133.3 133.3 0 0 1 23.07-30.75C70.33 75.19 97.22 64 128 64s57.67 11.19 79.93 33.25A133.5 133.5 0 0 1 231.05 128c-7.21 13.46-38.62 64-103.05 64m0-112a48 48 0 1 0 48 48a48.05 48.05 0 0 0-48-48m0 80a32 32 0 1 1 32-32a32 32 0 0 1-32 32"></path></svg><span class="sr-only">浏览</span>1</li><li class="inline-flex items-center gap-1" title="赞：1"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M178 40c-20.65 0-38.73 8.88-50 23.89C116.73 48.88 98.65 40 78 40a62.07 62.07 0 0 0-62 62c0 70 103.79 126.66 108.21 129a8 8 0 0 0 7.58 0C136.21 228.66 240 172 240 102a62.07 62.07 0 0 0-62-62m-50 174.8c-18.26-10.64-96-59.11-96-112.8a46.06 46.06 0 0 1 46-46c19.45 0 35.78 10.36 42.6 27a8 8 0 0 0 14.8 0c6.82-16.67 23.15-27 42.6-27a46.06 46.06 0 0 1 46 46c0 53.61-77.76 102.15-96 112.8"></path></svg><span class="sr-only">赞</span>1</li><li class="inline-flex items-center gap-1" title="收藏：0"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M184 32H72a16 16 0 0 0-16 16v176a8 8 0 0 0 12.24 6.78L128 193.43l59.77 37.35A8 8 0 0 0 200 224V48a16 16 0 0 0-16-16m0 177.57l-51.77-32.35a8 8 0 0 0-8.48 0L72 209.57V48h112Z"></path></svg><span class="sr-only">收藏</span>0</li>
+        </ul>
+      </div>
+      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-4.5 font-medium"><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-05T10:00:00.000Z" title="发布：2026/11/5 18:00:00"><span class="text-dimmed">发布</span> 9 天前</time><span class="text-dimmed opacity-50">·</span><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-14T18:18:54.205Z" title="回复：2026/11/15 02:18:54"><span class="text-dimmed">回复</span> 5 小时前</time></div>
+    </article><article class="group relative isolate grid min-w-0 grid-cols-1 min-h-46 gap-3 py-5 px-3.5 desktop:px-5 rounded-lg bg-(--ui-card-translucent)">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div class="flex min-w-0 flex-1 items-start gap-2">
+            
+            <h2 title="为什么我觉得 boxplay 不好用" class="min-w-0 text-base leading-[1.4] font-extrabold text-default desktop:text-[17px]">
+              <a href="/forum/post/t9" class="block after:absolute after:inset-0 after:z-10 after:rounded-lg focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-primary"><span class="line-clamp-2">为什么我觉得 boxplay 不好用</span></a>
+            </h2>
+          </div>
+        </div>
+        <div class="mt-1 flex flex-wrap gap-x-5 gap-y-1"><a href="/forum/category/creative-works" class="relative z-20 inline-flex h-5 items-center text-xs font-semibold text-primary hover:underline">#创作与作品</a></div>
+        <p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">这里是一段帖子摘要，用来占位展示两行截断的效果，长度大概和站内真实摘要接近，方便看排版。</p>
+      </div>
+      <div class="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs leading-4.5 text-dimmed">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 font-medium">
+          <a href="/profile/u9" class="relative z-20 flex min-w-0 items-center gap-1.5">
+            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">l</span>
+            <span title="lxy24" class="min-w-0 truncate font-semibold text-muted">lxy24</span>
+          </a>
+          
+        </div>
+        <ul aria-label="帖子数据" class="ml-auto flex shrink-0 items-center gap-3.5 font-normal">
+          <li class="inline-flex items-center gap-1" title="回复：0"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M128 24a104 104 0 0 0-91.82 152.88l-11.35 34.05a16 16 0 0 0 20.24 20.24l34.05-11.35A104 104 0 1 0 128 24m0 192a87.87 87.87 0 0 1-44.06-11.81a8 8 0 0 0-6.54-.67L40 216l12.47-37.4a8 8 0 0 0-.66-6.54A88 88 0 1 1 128 216"></path></svg><span class="sr-only">回复</span>0</li><li class="inline-flex items-center gap-1" title="浏览：1"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M247.31 124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57 61.26 162.88 48 128 48S61.43 61.26 36.34 86.35C17.51 105.18 9 124 8.69 124.76a8 8 0 0 0 0 6.5c.35.79 8.82 19.57 27.65 38.4C61.43 194.74 93.12 208 128 208s66.57-13.26 91.66-38.34c18.83-18.83 27.3-37.61 27.65-38.4a8 8 0 0 0 0-6.5M128 192c-30.78 0-57.67-11.19-79.93-33.25A133.5 133.5 0 0 1 25 128a133.3 133.3 0 0 1 23.07-30.75C70.33 75.19 97.22 64 128 64s57.67 11.19 79.93 33.25A133.5 133.5 0 0 1 231.05 128c-7.21 13.46-38.62 64-103.05 64m0-112a48 48 0 1 0 48 48a48.05 48.05 0 0 0-48-48m0 80a32 32 0 1 1 32-32a32 32 0 0 1-32 32"></path></svg><span class="sr-only">浏览</span>1</li><li class="inline-flex items-center gap-1" title="赞：1"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M178 40c-20.65 0-38.73 8.88-50 23.89C116.73 48.88 98.65 40 78 40a62.07 62.07 0 0 0-62 62c0 70 103.79 126.66 108.21 129a8 8 0 0 0 7.58 0C136.21 228.66 240 172 240 102a62.07 62.07 0 0 0-62-62m-50 174.8c-18.26-10.64-96-59.11-96-112.8a46.06 46.06 0 0 1 46-46c19.45 0 35.78 10.36 42.6 27a8 8 0 0 0 14.8 0c6.82-16.67 23.15-27 42.6-27a46.06 46.06 0 0 1 46 46c0 53.61-77.76 102.15-96 112.8"></path></svg><span class="sr-only">赞</span>1</li><li class="inline-flex items-center gap-1" title="收藏：0"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M184 32H72a16 16 0 0 0-16 16v176a8 8 0 0 0 12.24 6.78L128 193.43l59.77 37.35A8 8 0 0 0 200 224V48a16 16 0 0 0-16-16m0 177.57l-51.77-32.35a8 8 0 0 0-8.48 0L72 209.57V48h112Z"></path></svg><span class="sr-only">收藏</span>0</li>
+        </ul>
+      </div>
+      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-4.5 font-medium"><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-01T10:00:00.000Z" title="发布：2026/11/1 18:00:00"><span class="text-dimmed">发布</span> 13 天前</time><span class="text-dimmed opacity-50">·</span><time class="z-20 min-w-0 whitespace-nowrap text-dimmed" datetime="2026-11-14T13:18:54.205Z" title="回复：2026/11/14 21:18:54"><span class="text-dimmed">回复</span> 10 小时前</time></div>
+    </article></div>
+      <div class="px-foot"><span class="px-note" style="margin:0;padding:0">已经到底了</span></div></div>
+  </div>
+
+  <div class="sec-title">设置页：左侧导航里的 PICTEXT 入口</div>
+  <div class="shell" style="padding:0">
+    <div class="flex gap-3" style="align-items:flex-start">
+      <aside aria-label="设置" class="min-w-0" style="width:220px">
+        <nav aria-label="设置分类" class="flex flex-col gap-1">
+          <button type="button" class="flex h-11 min-w-0 items-center gap-2.5 rounded-md px-4 text-left text-sm font-semibold whitespace-nowrap text-muted transition-colors hover:bg-accented hover:text-default">个人资料</button>
+          <button type="button" class="flex h-11 min-w-0 items-center gap-2.5 rounded-md px-4 text-left text-sm font-semibold whitespace-nowrap text-muted transition-colors hover:bg-accented hover:text-default">账号安全</button>
+          <button type="button" data-px="1" data-px-settings-nav="1" class="flex h-11 items-center gap-2.5 rounded-md px-4 text-sm font-semibold text-muted hover:bg-accented" aria-pressed="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" aria-hidden="true" class="size-4.5 shrink-0"><line x1="40" y1="80" x2="216" y2="80"></line><circle cx="100" cy="80" r="20" fill="currentColor" stroke="none"></circle><line x1="40" y1="176" x2="216" y2="176"></line><circle cx="156" cy="176" r="20" fill="currentColor" stroke="none"></circle></svg><span>PICTEXT</span></button>
+        </nav>
+      </aside>
+      <div style="flex:1;min-width:0">
+<section id="pictExt-settings" data-px="1" aria-labelledby="pictExt-settings-title" class="rounded-lg overflow-hidden bg-default ring-0 shadow-none" data-px-bound="1">
+      <div class="p-4 desktop:p-6 sm:p-4">
+        <div class="mb-5 flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-2">
+          <div class="min-w-0">
+            <h2 id="pictExt-settings-title" class="text-base font-semibold text-default">PICTEXT</h2>
+            <p class="mt-1 text-sm leading-6 text-muted">pictExt 扩展的设置。改动即时生效，随时可以改回来。</p>
+          </div>
+          <div class="flex min-w-0 max-w-full flex-wrap items-center gap-2 desktop:ml-auto">
+            <button type="button" data-px-reset="" class="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-elevated px-3 text-sm font-semibold text-default transition-colors hover:bg-accented">恢复默认</button>
+          </div>
+        </div>
+        <div class="min-w-0 divide-y divide-default">
+          <div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">帖子排序模式</h3></div>
+          <p class="mt-1 text-sm leading-6 text-muted">「原版」= 插件完全不替换，站内本来怎么排就怎么排（默认）。「全部替换」= 首页、所有板块页、搜索页统一换成 8 项：关注 / 推荐流 / 最新 / 最多浏览 / 最多点赞 / 最多回复 / 最多收藏 / 最热。</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2"><select data-px-set="sortMode" class="h-9 rounded-md border border-default bg-default px-3 text-sm text-default transition-colors focus-visible:outline-2 focus-visible:outline-primary">
+        <option value="native" selected="">原版（不替换，默认）</option><option value="replace">全部替换（8 项）</option>
+      </select></div>
+      </div><div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">默认排序</h3></div>
+          <p class="mt-1 text-sm leading-6 text-muted">「全部替换」模式下进入页面时默认选中哪一项，手动切换过就以手动为准。搜索页的「推荐流」会自动换成「站内搜索」。</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2"><select data-px-set="defaultSort" class="h-9 rounded-md border border-default bg-default px-3 text-sm text-default transition-colors focus-visible:outline-2 focus-visible:outline-primary">
+        <option value="following">关注</option><option value="recommended">推荐流</option><option value="search">站内搜索（仅搜索页）</option><option value="latest" selected="">最新</option><option value="views">最多浏览</option><option value="likes">最多点赞</option><option value="replies">最多回复</option><option value="bookmarks">最多收藏</option><option value="hot">最热</option>
+      </select></div>
+      </div><div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">首页也替换</h3></div>
+          <p class="mt-1 text-sm leading-6 text-muted">「全部替换」模式下是否连首页一起换。关掉就只在板块页 / 搜索页生效。</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2"><button type="button" role="switch" data-px-set="homeSort" data-state="checked" aria-checked="true" class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-[background] duration-200 ease-out data-[state=checked]:bg-primary data-[state=unchecked]:bg-accented focus-visible:outline-3 focus-visible:outline-primary">
+        <span data-state="checked" class="pointer-events-none size-4 rounded-full bg-default shadow-lg transition-transform duration-200 ease-out data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0"></span>
+      </button></div>
+      </div><div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">板块页替换</h3></div>
+          <p class="mt-1 text-sm leading-6 text-muted">点帖子上的 #标签 进入的板块页（/forum/category/…）是否替换。8 项在任何一个板块页里都可用。</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2"><button type="button" role="switch" data-px-set="categorySort" data-state="checked" aria-checked="true" class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-[background] duration-200 ease-out data-[state=checked]:bg-primary data-[state=unchecked]:bg-accented focus-visible:outline-3 focus-visible:outline-primary">
+        <span data-state="checked" class="pointer-events-none size-4 rounded-full bg-default shadow-lg transition-transform duration-200 ease-out data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0"></span>
+      </button></div>
+      </div><div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">搜索页替换</h3></div>
+          <p class="mt-1 text-sm leading-6 text-muted">搜索结果的帖子列表是否替换，关键词与板块筛选会一起带过去。</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2"><button type="button" role="switch" data-px-set="searchSort" data-state="checked" aria-checked="true" class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-[background] duration-200 ease-out data-[state=checked]:bg-primary data-[state=unchecked]:bg-accented focus-visible:outline-3 focus-visible:outline-primary">
+        <span data-state="checked" class="pointer-events-none size-4 rounded-full bg-default shadow-lg transition-transform duration-200 ease-out data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0"></span>
+      </button></div>
+      </div><div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">评论区排序模式</h3></div>
+          <p class="mt-1 text-sm leading-6 text-muted">「原版」= 站内三个排序照旧，只多一个「折叠全部回复」（默认）。「改版」= 换成 最热 / 关注 / 最早 / 最新 / 最多点赞 / 最多楼高。</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2"><select data-px-set="commentSortMode" class="h-9 rounded-md border border-default bg-default px-3 text-sm text-default transition-colors focus-visible:outline-2 focus-visible:outline-primary">
+        <option value="native" selected="">原版（默认）</option><option value="replace">改版（6 项）</option>
+      </select></div>
+      </div><div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">显示改良：三种时间</h3></div>
+          <p class="mt-1 text-sm leading-6 text-muted">把卡片上那个「x 时间前」拆成三项：发布时间（最老的那一版）、最近更新（帖子改过才有）、最近回复（最新一条回复的时间）。</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2"><button type="button" role="switch" data-px-set="showTimes" data-state="unchecked" aria-checked="false" class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-[background] duration-200 ease-out data-[state=checked]:bg-primary data-[state=unchecked]:bg-accented focus-visible:outline-3 focus-visible:outline-primary">
+        <span data-state="unchecked" class="pointer-events-none size-4 rounded-full bg-default shadow-lg transition-transform duration-200 ease-out data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0"></span>
+      </button></div>
+      </div><div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">读取登录状态（仅内存）</h3></div>
+          <p class="mt-1 text-sm leading-6 text-muted">开着才能用「关注」流和评论关注筛选：进入页面时把 Cookie 读进内存，页面关闭 / 切后台立刻清空，不写入任何存储。关掉后所有请求都是匿名只读。</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2"><button type="button" role="switch" data-px-set="useSession" data-state="checked" aria-checked="true" class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-[background] duration-200 ease-out data-[state=checked]:bg-primary data-[state=unchecked]:bg-accented focus-visible:outline-3 focus-visible:outline-primary">
+        <span data-state="checked" class="pointer-events-none size-4 rounded-full bg-default shadow-lg transition-transform duration-200 ease-out data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0"></span>
+      </button></div>
+      </div><div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">楼中楼自动折叠</h3></div>
+          <p class="mt-1 text-sm leading-6 text-muted">长贴里回复多的楼层默认折叠起来，点一下再展开；每层楼各自记住状态。</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2"><button type="button" role="switch" data-px-set="collapse" data-state="checked" aria-checked="true" class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-[background] duration-200 ease-out data-[state=checked]:bg-primary data-[state=unchecked]:bg-accented focus-visible:outline-3 focus-visible:outline-primary">
+        <span data-state="checked" class="pointer-events-none size-4 rounded-full bg-default shadow-lg transition-transform duration-200 ease-out data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0"></span>
+      </button></div>
+      </div><div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">折叠阈值</h3></div>
+          <p class="mt-1 text-sm leading-6 text-muted">楼中楼条数达到多少才默认折叠。选「1 条」就是只要有回复就折起来。</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2"><select data-px-set="collapseMin" class="h-9 rounded-md border border-default bg-default px-3 text-sm text-default transition-colors focus-visible:outline-2 focus-visible:outline-primary">
+        <option value="1">1 条</option><option value="2" selected="">2 条</option><option value="3">3 条</option><option value="5">5 条</option><option value="10">10 条</option>
+      </select></div>
+      </div><div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">「折叠全部回复」按钮</h3></div>
+          <p class="mt-1 text-sm leading-6 text-muted">在评论排序旁放一个按钮，一键折叠 / 展开整个帖子的楼中楼。</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2"><button type="button" role="switch" data-px-set="globalToggle" data-state="checked" aria-checked="true" class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-[background] duration-200 ease-out data-[state=checked]:bg-primary data-[state=unchecked]:bg-accented focus-visible:outline-3 focus-visible:outline-primary">
+        <span data-state="checked" class="pointer-events-none size-4 rounded-full bg-default shadow-lg transition-transform duration-200 ease-out data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0"></span>
+      </button></div>
+      </div><div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">评论区帖子信息条</h3></div>
+          <p class="mt-1 text-sm leading-6 text-muted">在评论区顶部补一行浏览 / 回复 / 点赞 / 发布时间 / 最后活跃 / 标签。</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2"><button type="button" role="switch" data-px-set="topicInfo" data-state="checked" aria-checked="true" class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-[background] duration-200 ease-out data-[state=checked]:bg-primary data-[state=unchecked]:bg-accented focus-visible:outline-3 focus-visible:outline-primary">
+        <span data-state="checked" class="pointer-events-none size-4 rounded-full bg-default shadow-lg transition-transform duration-200 ease-out data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0"></span>
+      </button></div>
+      </div><div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">回复区格式工具栏</h3></div>
+          <p class="mt-1 text-sm leading-6 text-muted">点进帖子的回复框时，自动展开站内自带的 Markdown 工具栏（和发帖页同一套：粗体、链接、代码块、公式等）。自己点「格式工具」收起后，扩展不再干预这个回复框。</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2"><button type="button" role="switch" data-px-set="replyToolbar" data-state="checked" aria-checked="true" class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-[background] duration-200 ease-out data-[state=checked]:bg-primary data-[state=unchecked]:bg-accented focus-visible:outline-3 focus-visible:outline-primary">
+        <span data-state="checked" class="pointer-events-none size-4 rounded-full bg-default shadow-lg transition-transform duration-200 ease-out data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0"></span>
+      </button></div>
+      </div><div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">卡片显示赞数</h3></div>
+          <p class="mt-1 text-sm leading-6 text-muted">在帖子卡片上补出点赞数。</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2"><button type="button" role="switch" data-px-set="showLikes" data-state="checked" aria-checked="true" class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-[background] duration-200 ease-out data-[state=checked]:bg-primary data-[state=unchecked]:bg-accented focus-visible:outline-3 focus-visible:outline-primary">
+        <span data-state="checked" class="pointer-events-none size-4 rounded-full bg-default shadow-lg transition-transform duration-200 ease-out data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0"></span>
+      </button></div>
+      </div><div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">卡片显示收藏数</h3></div>
+          <p class="mt-1 text-sm leading-6 text-muted">在帖子卡片上补出收藏数。接口没返回这个字段时不显示，也不填 0。</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2"><button type="button" role="switch" data-px-set="showBookmarks" data-state="checked" aria-checked="true" class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-[background] duration-200 ease-out data-[state=checked]:bg-primary data-[state=unchecked]:bg-accented focus-visible:outline-3 focus-visible:outline-primary">
+        <span data-state="checked" class="pointer-events-none size-4 rounded-full bg-default shadow-lg transition-transform duration-200 ease-out data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0"></span>
+      </button></div>
+      </div><div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">卡片显示标签</h3></div>
+          <p class="mt-1 text-sm leading-6 text-muted">在帖子卡片上显示 #标签，可点进对应板块。</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2"><button type="button" role="switch" data-px-set="showTags" data-state="checked" aria-checked="true" class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-[background] duration-200 ease-out data-[state=checked]:bg-primary data-[state=unchecked]:bg-accented focus-visible:outline-3 focus-visible:outline-primary">
+        <span data-state="checked" class="pointer-events-none size-4 rounded-full bg-default shadow-lg transition-transform duration-200 ease-out data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0"></span>
+      </button></div>
+      </div><div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">卡片显示置顶标记</h3></div>
+          <p class="mt-1 text-sm leading-6 text-muted">置顶帖标题前加一枚图钉。</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2"><button type="button" role="switch" data-px-set="showPinned" data-state="checked" aria-checked="true" class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-[background] duration-200 ease-out data-[state=checked]:bg-primary data-[state=unchecked]:bg-accented focus-visible:outline-3 focus-visible:outline-primary">
+        <span data-state="checked" class="pointer-events-none size-4 rounded-full bg-default shadow-lg transition-transform duration-200 ease-out data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0"></span>
+      </button></div>
+      </div>
+          <div class="flex min-w-0 gap-4 py-4 first:pt-0 last:pb-0 items-center justify-between">
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2"><h3 class="text-sm font-medium text-default wrap-anywhere">隐私</h3></div>
+              <p class="mt-1 text-sm leading-6 text-muted">Cookie 只在当前页面的内存里过一手：进入页面读一次，只为判断「现在是不是登录状态」（关注流要用）；页面关闭、切到后台、路由切换都会立刻清空，不写入 localStorage / sessionStorage / IndexedDB，也不上传到任何地方，更不会改动站点本身的登录 Cookie。关掉「读取登录状态」后，所有请求回到匿名只读。这里的设置只写入本机 localStorage（键名 pictExt:settings:v1）。</p>
+            </div>
+            <div class="flex shrink-0 flex-wrap items-center gap-2">
+              <button type="button" data-px-clear="" class="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-elevated px-3 text-sm font-semibold text-default transition-colors hover:bg-accented">清除设置</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec-title">帖子详情页：楼中楼折叠</div>
+  <div class="reply-demo">
+    <p><b>吉吉喵</b> · 6 天前 · #1</p>
+    <p>首楼正文，下面这一楼有 12 条回复，默认折叠。</p>
+    <button class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-muted hover:text-primary transition-colors" style="margin-left:46px;margin-bottom:4px">
+      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 256 256" fill="currentColor" class="shrink-0"><path d="M128 24a104 104 0 0 0-91.82 152.88l-11.35 34.05a16 16 0 0 0 20.24 20.24l34.05-11.35A104 104 0 1 0 128 24m0 192a87.87 87.87 0 0 1-44.06-11.81a8 8 0 0 0-6.54-.67L40 216l12.47-37.4a8 8 0 0 0-.66-6.54A88 88 0 1 1 128 216"/></svg>
+      <span>展开 12 条回复</span>
+    </button>
+    <div class="indent">↑ 点这里的「展开 / 收起」；评论排序旁边还有「折叠全部回复」</div>
+  </div>
+</div>
+</body>
+</html>
