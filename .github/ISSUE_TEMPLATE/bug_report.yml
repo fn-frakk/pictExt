@@ -1,0 +1,69 @@
+name: 功能失效 / 显示异常
+description: 站内某块 UI 没生效、位置不对、点了没反应
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        站点改版会让选择器失效，能提供下面这些信息就能少猜很多。
+        **请勿粘贴 Cookie、账号 token 或含个人信息的截图**。
+  - type: input
+    id: version
+    attributes:
+      label: pictExt 版本
+      description: 扩展页里显示的版本号，或 manifest.json 的 version
+      placeholder: 1.7.4
+    validations:
+      required: true
+  - type: dropdown
+    id: browser
+    attributes:
+      label: 浏览器
+      options:
+        - Chrome
+        - Edge
+        - 其他 Chromium
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: 出问题的页面
+      description: 去掉参数里的隐私内容，例如 https://pickcat.dao3.fun/forum/post/xxxx
+      placeholder: https://pickcat.dao3.fun/forum/post/...
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 现象
+      description: 哪个按钮/哪块区域、期望怎样、实际怎样
+      placeholder: |
+        点「下一页」没反应，要连点两三次才翻页；
+        展开全文按钮出现在卡片很下面的位置。
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      value: |
+        1. 打开 ...
+        2. 点 ...
+        3. 看到 ...
+  - type: textarea
+    id: dom
+    attributes:
+      label: 相关 DOM（可选但很有用）
+      description: DevTools 里 Elements 面板右键该节点 → Copy → Copy outerHTML，粘贴前记得删掉邮箱等个人信息
+      render: html
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 自查
+      options:
+        - label: 已在 chrome://extensions 里重新加载扩展并刷新页面
+          required: true
+        - label: 设置页里对应的开关是开着的（排序模式=全部替换 / 评论区按页显示 等）
+          required: true

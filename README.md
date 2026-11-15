@@ -280,3 +280,15 @@ node .test/make-preview.js  # 重新生成 docs/preview.html
 | 关注 / 站内推荐 | `GET /api/v1/topic-recommendations`（`scope=following` 需登录） |
 | 评论接口 | `GET /api/v1/topics/{id}/posts?sort=hot\|latest\|earliest` |
 | 关注列表 | `GET /api/v1/users/{id}/following`、`GET /api/v1/session` |
+
+## 十一、参与贡献
+
+想改代码、补锚点、报问题都欢迎，先看 [CONTRIBUTING.md](CONTRIBUTING.md)。三条硬规矩：
+
+- 只读：不新增任何写请求（`POST / PUT / PATCH / DELETE`）；
+- 不碰凭据：不把 Cookie / token 写进存储或上报；
+- 默认不打扰：新功能默认关闭或默认「原版」。
+
+报问题请用仓库的 issue 模板（会提示你带上版本号、页面地址、相关 DOM）；**不要贴 Cookie 或含个人信息的截图**。
+
+版本历史见 [CHANGELOG.md](CHANGELOG.md)，许可证 [MIT](LICENSE)。

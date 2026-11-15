@@ -1,0 +1,39 @@
+name: 功能建议
+description: 想要一个新的排序、新的展示方式，或者某个交互更顺手
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: pain
+    attributes:
+      label: 现在哪里不顺手
+      description: 先说场景，再说方案。带上具体页面和操作路径最好。
+      placeholder: 楼层 200+ 的帖子，滚到底要很久，且中途没法回到顶部……
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 你希望它变成什么样
+      placeholder: 希望能像 B 站那样一页 10 楼，底部有页码……
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 大概属于哪块
+      options:
+        - 帖子排序 / 列表
+        - 评论区（排序 / 分页 / 折叠）
+        - 合集
+        - 设置页 / 其他 UI
+        - 不太确定
+    validations:
+      required: true
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: 边界确认
+      options:
+        - label: 这个建议不涉及自动发帖 / 自动回复 / 刷赞等写操作
+          required: true
+        - label: 这个建议不需要读取或上传我的登录凭据
+          required: true
