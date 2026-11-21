@@ -46,11 +46,9 @@ const HTML = `<!doctype html><html><head></head><body><div id="__nuxt"><main>
   console.log('状态行：', status ? status.textContent : '(无)');
   console.log('请求数：', calls.length);
 
-  const input = doc.querySelector('.px-super-input');
   const probe = async (q) => {
-    input.value = q;
-    input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-    await sleep(300);
+    dom.window.history.pushState({}, '', '/search?q=' + encodeURIComponent(q));
+    await sleep(800);
     const items = [...doc.querySelectorAll('.px-super-item')];
     const st = doc.querySelector('[data-px-super-status]').textContent;
     console.log(`\n查询「${q}」 → ${st}`);
@@ -64,9 +62,19 @@ const HTML = `<!doctype html><html><head></head><body><div id="__nuxt"><main>
 
   await probe('pickcat');
   await probe('pickcat 社区');
-  await probe('"pickcat"');
   await probe('MOSS');
-  await probe('pickcat -社区');
+  // 宽松模式
+  doc.querySelector('[data-px-super-mode="loose"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await sleep(400);
+  console.log('\n（宽松模式）');
+  await probe('pickcat 社区');
+  doc.querySelector('[data-px-super-mode="strict"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await sleep(300);
+  // 排序：最早
+  doc.querySelector('[data-px-super-sort="earliest"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await sleep(300);
+  console.log('\n（最早）');
+  await probe('pickcat');
 
   process.exit(0);
 })();

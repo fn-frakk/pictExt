@@ -1193,12 +1193,12 @@ async function runStats() {
 
 /* ---------------------------------------------------------------- */
 async function runSuperSearch() {
-  console.log('\n[K. Super 搜索 · 严格匹配 + 候选池增量]');
+  console.log('\n[K. Super 搜索 · 严格/宽松匹配 + 候选池增量 + 自动清理]');
 
   const { doc, calls, window } = boot(SEARCH_HTML, 'http://localhost/search?q=帖子', {
     settings: { superSearch: true },
   });
-  await sleep(1400); // 等后台同步候选池
+  await sleep(1500); // 面板会自动同步候选池
 
   const panel = doc.getElementById('pictExt-super');
   ok(!!panel, '搜索页出现 Super 搜索面板');
@@ -1206,98 +1206,87 @@ async function runSuperSearch() {
   const grid = doc.querySelector('div[aria-label="帖子搜索结果"]');
   ok(grid && grid.style.display === 'none', '站内模糊搜索结果被隐藏');
 
-  const input = panel.querySelector('.px-super-input');
-  ok(!!input, '有搜索输入框');
-  ok(input && input.value === '帖子', '输入框带上 URL 里的关键词', input && input.value);
+  // 输入框删掉了：关键词走站点的搜索框（URL 上的 q）
+  ok(!panel.querySelector('input'), '面板里没有多余的搜索输入框');
+  const kw = panel.querySelector('[data-px-super-keyword]');
+  ok(kw && kw.textContent.trim() === '帖子', '关键词取自站内搜索框（URL q）', kw && kw.textContent);
 
   const status = panel.querySelector('[data-px-super-status]');
   ok(status && /命中/.test(status.textContent), '状态行显示命中数', status && status.textContent);
   ok(status && /已同步至/.test(status.textContent), '状态行显示同步水位线', status && status.textContent);
+  ok(status && /池子 \d+ 帖/.test(status.textContent), '状态行显示池子规模');
 
-  const items = () => [...panel.querySelectorAll('.px-super-item')];
-  const typeOf = (n) => items()[n]?.querySelector('.px-super-badge')?.dataset.kind;
+  // 自动同步：进面板就自己同步了（不用点按钮）
+  ok(calls.some((c) => c.url.includes('/api/v1/topics') && c.url.includes('sort=latest')), '进面板自动同步候选池');
+  ok(!panel.querySelector('[data-px-super-sync]') && !panel.querySelector('[data-px-super-prune]'), '不再有手动「同步 / 清理」按钮');
 
-  // 1) 严格匹配：所有词都要命中
-  input.value = '帖子标题';
-  input.dispatchEvent(new window.Event('input', { bubbles: true }));
-  await sleep(120);
+  const items = () => [...panel.querySelectorAll('.px-super-item, .px-super-results > article')];
+  const goto = async (q) => {
+    window.history.pushState({}, '', '/search?q=' + encodeURIComponent(q));
+    await sleep(500);
+  };
+
+  // 1) 严格：所有词都要命中
+  await goto('帖子标题');
   ok(items().length === 20, '单词命中 20 条', String(items().length));
-
-  input.value = '帖子标题 摘要';
-  input.dispatchEvent(new window.Event('input', { bubbles: true }));
-  await sleep(120);
-  ok(items().length === 20, '两词都命中 → 仍是 20 条（AND，不是 OR）', String(items().length));
-
-  input.value = '帖子标题 根本没有这个词';
-  input.dispatchEvent(new window.Event('input', { bubbles: true }));
-  await sleep(120);
+  await goto('帖子标题 摘要');
+  ok(items().length === 20, '两词都命中 → 仍是 20 条（AND）', String(items().length));
+  await goto('帖子标题 根本没有这个词');
   ok(items().length === 0, '有一个词不命中 → 0 条（严格）', String(items().length));
 
-  // 2) 排除
-  input.value = '帖子标题 -2';
-  input.dispatchEvent(new window.Event('input', { bubbles: true }));
-  await sleep(120);
+  // 2) 宽松：任意一个词命中即可
+  panel.querySelector('[data-px-super-mode="loose"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await sleep(200);
+  ok(items().length > 0, '宽松模式下部分命中也算（不再是 0）', String(items().length));
+  panel.querySelector('[data-px-super-mode="strict"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await sleep(200);
+  ok(items().length === 0, '切回严格 → 又回到 0 条', String(items().length));
+
+  // 3) 排除词 / 短语 / 字段限定
+  await goto('帖子标题 -2');
   ok(items().length > 0 && items().length < 20, '排除词生效', String(items().length));
-
-  // 3) 精确短语
-  input.value = '"帖子标题 1"';
-  input.dispatchEvent(new window.Event('input', { bubbles: true }));
-  await sleep(120);
-  // 短语是子串匹配：'帖子标题 1' 也会命中 '帖子标题 10~19'
+  await goto('"帖子标题 1"');
   ok(items().length === 11, '引号短语按子串精确匹配（1 与 10~19 共 11 条）', String(items().length));
-
-  // 4) 字段限定
-  input.value = 'title:摘要';
-  input.dispatchEvent(new window.Event('input', { bubbles: true }));
-  await sleep(120);
+  await goto('title:摘要');
   ok(items().length === 0, 'title: 只在标题里找（摘要只在正文 → 0 条）', String(items().length));
 
-  // 5) 高亮
-  input.value = '帖子标题 1';
-  input.dispatchEvent(new window.Event('input', { bubbles: true }));
-  await sleep(120);
-  ok(!!panel.querySelector('.px-super-item mark.px-mark'), '命中关键词被高亮');
+  // 4) 排序项：把站点那几项都端上来
+  const sortLabels = [...panel.querySelectorAll('[data-px-super-sort]')].map((b) => b.textContent.trim());
+  ok(
+    sortLabels.join(',') === '相关度,最新,最早,最多浏览,最多点赞,最多回复,最多收藏,最热',
+    '8 项排序都在（相关度/最新/最早/浏览/点赞/回复/收藏/最热）',
+    sortLabels.join(',')
+  );
+  await goto('帖子标题');
+  panel.querySelector('[data-px-super-sort="earliest"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await sleep(200);
+  ok(panel.querySelector('[data-px-super-sort="earliest"]').dataset.active === 'true', '「最早」可选并高亮');
+  const firstTitle = items()[0]?.querySelector('h2')?.textContent.trim();
+  ok(!!firstTitle, '结果用站点卡片结构渲染（带标题）', firstTitle);
 
-  // 6) 范围：只看回复
-  input.value = 'Box';
-  input.dispatchEvent(new window.Event('input', { bubbles: true }));
-  await sleep(120);
+  // 5) 卡片风格：站点卡片 + 「帖子 / 回复 · 第 N 楼」标签
+  const badge = items()[0]?.querySelector('.px-kind');
+  ok(!!badge && badge.textContent.trim() === '帖子', '帖子结果标「帖子」', badge && badge.textContent);
+  ok(!!items()[0]?.querySelector('ul[aria-label="帖子数据"]'), '卡片带站点同款数据行（回复/浏览/赞/收藏）');
+  await goto('Box');
   const scopeBtn = panel.querySelector('[data-px-super-scope="reply"]');
   scopeBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-  await sleep(150);
-  ok(items().length > 0, '回复里有命中项', String(items().length));
-  ok(items().every((el) => el.dataset.pxSuperType === 'reply'), '「只看回复」过滤生效');
-  ok(typeOf(0) === 'reply', '回复结果标成「回复」');
-  panel.querySelector('[data-px-super-scope="all"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-  await sleep(120);
+  await sleep(200);
+  const replyItems = items();
+  ok(replyItems.length > 0, '回复里有命中项', String(replyItems.length));
+  const replyBadge = replyItems[0]?.querySelector('.px-kind');
+  ok(replyBadge && /回复 · 第 \d+ 楼/.test(replyBadge.textContent), '回复结果标「回复 · 第 N 楼」', replyBadge && replyBadge.textContent);
+  ok(!!replyItems[0]?.querySelector('mark.px-mark'), '命中关键词高亮');
 
-  // 7) 增量：第二次同步只在有变化时才补回复，且主题链只翻到水位线
-  const postsCallsBefore = calls.filter((c) => /\/api\/v1\/topics\/[^/]+\/posts/.test(new URL(c.url).pathname)).length;
-  const topicCallsBefore = calls.filter((c) => new URL(c.url).pathname === '/api/v1/topics').length;
-  panel.querySelector('[data-px-super-sync]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-  await sleep(1200);
-  const postsCallsAfter = calls.filter((c) => /\/api\/v1\/topics\/[^/]+\/posts/.test(new URL(c.url).pathname)).length;
-  const topicCallsAfter = calls.filter((c) => new URL(c.url).pathname === '/api/v1/topics').length;
-  ok(topicCallsAfter > topicCallsBefore, '同步按钮会再拉一次主题链');
-  ok(topicCallsAfter - topicCallsBefore === 1, '没有新内容时只翻 1 页就停（水位线截断）', String(topicCallsAfter - topicCallsBefore));
-  ok(postsCallsAfter === postsCallsBefore, '没有新活动 → 不重复拉回复（增量）', String(postsCallsAfter - postsCallsBefore));
-
-  // 8) 清理失效：帖子 404 → 从池子里剔除
-  const gone = boot(SEARCH_HTML, 'http://localhost/search?q=帖子', {
+  // 6) 自动清理失效：被删的帖子不会留在池子里
+  const withGone = boot(SEARCH_HTML, 'http://localhost/search?q=帖子', {
     settings: { superSearch: true },
     superGone: ['topic-3'],
   });
-  await sleep(1400);
-  const goneStatus = gone.doc.querySelector('[data-px-super-status]');
-  ok(goneStatus && /池子/.test(goneStatus.textContent), '池子状态可见', goneStatus && goneStatus.textContent);
-  const poolMatch = /池子 (\d+) 帖/.exec(goneStatus ? goneStatus.textContent : '');
-  const before = poolMatch ? Number(poolMatch[1]) : -1;
-  gone.doc.querySelector('[data-px-super-prune]').dispatchEvent(new gone.window.MouseEvent('click', { bubbles: true }));
-  await sleep(1500);
-  const afterStatus = gone.doc.querySelector('[data-px-super-status]');
-  const poolMatch2 = /池子 (\d+) 帖/.exec(afterStatus ? afterStatus.textContent : '');
-  const after = poolMatch2 ? Number(poolMatch2[1]) : -1;
-  ok(before > 0 && after === before - 1, '失效帖子被清出候选池', before + ' → ' + after);
+  await sleep(1800);
+  const goneStatus = withGone.doc.querySelector('[data-px-super-status]');
+  const gonePool = /池子 (\d+) 帖/.exec(goneStatus ? goneStatus.textContent : '');
+  ok(gonePool && Number(gonePool[1]) === 19, '失效帖子（404）被自动清出候选池', goneStatus && goneStatus.textContent);
 }
 
 (async () => {

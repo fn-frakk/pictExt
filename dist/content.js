@@ -1,6 +1,17 @@
 /**
- * pictExt / v1.10.0
+ * pictExt / v1.10.1
  * ---------------------------------------------------------------
+ * 【v1.10.1 变更】
+ * - Super 搜索结果改用**站点卡片结构**渲染（复用 08-cards 的 cardHTML），跟首页帖子
+ *   同一套外观；只在前面加一个「帖子」/「回复 · 第 N 楼」标签，命中关键词高亮。
+ * - 「清理失效」不再卡死：改成**自动轮转抽查**（每轮 40 个、并发 6、逐轮覆盖），
+ *   同步候选池时顺带做掉；面板上不再有手动「同步 / 清理」按钮 —— 同步与清理都自动。
+ * - 删掉 Super 面板里那个用不了的搜索输入框：关键词直接用**站点的搜索框**（URL 的 q）。
+ * - 删掉 Ctrl/⌘+K 快捷键与浮层。
+ * - 匹配方式可切「严格 / 宽松」；排序项把站点那几项都端上来：
+ *   相关度 / 最新 / 最早 / 最多浏览 / 最多点赞 / 最多回复 / 最多收藏 / 最热。
+ * ---------------------------------------------------------------
+ * 【v1.10.0 变更】
  * 【v1.10.0 变更】
  * - 新增「Super 搜索」：把站内那套模糊搜索换掉（站内 /topics?q= 是相关度匹配，
  *   搜 pick 出 29 条、搜 pickcat 出 500 条，越搜越糊）。搜索页直接接管成
@@ -1051,7 +1062,10 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   color:var(--pxs-dim); font-size:15px; line-height:1; padding:6px 8px; border-radius:8px;
 }
 .px-super-close:hover{ color:var(--pxs-text); background:color-mix(in srgb, var(--pxs-primary) 10%, transparent); }
-.px-super-searchbar{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:12px 14px; border:1px solid var(--pxs-border); background:var(--pxs-card); }
+.px-super-searchbar{ display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; padding:10px 14px; border:1px solid var(--pxs-border); background:var(--pxs-card); }
+.px-super-keyword{ font-size:12px; color:var(--pxs-dim); }
+.px-super-keyword-value{ font-size:14px; font-weight:700; color:var(--pxs-text); word-break:break-all; }
+.px-super-hint{ font-size:12px; color:var(--pxs-dim); margin-left:auto; }
 .px-super-input{
   flex:1 1 260px; min-width:0; height:38px; padding:0 12px;
   border-radius:10px; border:1px solid var(--pxs-border);
@@ -1089,6 +1103,11 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   padding:10px; border:1px solid var(--pxs-border); border-top:0;
   border-radius:0 0 12px 12px; background:var(--pxs-card);
 }
+.px-super-results > article{ content-visibility:auto; contain-intrinsic-size:auto 170px; }
+.px-super-results mark.px-mark{
+  background:color-mix(in srgb, var(--pxs-primary) 30%, transparent);
+  color:inherit; border-radius:3px; padding:0 1px;
+}
 .px-super-empty{ padding:26px 12px; text-align:center; color:var(--pxs-dim); font-size:13px; }
 .px-super-item{
   padding:11px 13px; border-radius:10px; border:1px solid transparent;
@@ -1117,21 +1136,6 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   background:color-mix(in srgb, var(--pxs-primary) 30%, transparent);
   color:inherit; border-radius:3px; padding:0 1px;
 }
-/* Ctrl+K 浮层 */
-.px-super-overlay{
-  position:fixed; inset:0; z-index:2147483000;
-  display:none; align-items:flex-start; justify-content:center;
-  padding:8vh 16px 16px;
-  background:color-mix(in srgb, #000 45%, transparent);
-  backdrop-filter:blur(4px);
-}
-.px-super-overlay .px-super{
-  width:min(880px, 100%); max-height:82vh; overflow-y:auto; overscroll-behavior:contain;
-  border-radius:14px; border:1px solid var(--pxs-border);
-  background:var(--ui-bg,Canvas);
-  box-shadow:0 24px 60px rgba(0,0,0,.35);
-}
-.px-super-overlay .px-super-results{ background:transparent; }
 `;
 
   function injectStyle() {
@@ -1326,13 +1330,14 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
 
     // 搜索结果里要分清「帖子」和「评论」：命中评论时站点给的是 match.postNumber
     // 第 1 楼就是帖子正文本身，别标成「评论」
+    // Super 搜索会自己指定标签文案（pxKindLabel：「帖子」/「回复 · 第 N 楼」）
     const isCommentHit =
       t.matchPostNumber !== null && t.matchPostNumber !== undefined && Number(t.matchPostNumber) > 1;
     const kindBadge =
       kind === 'search'
-        ? `<span class="px-kind" data-kind="${isCommentHit ? 'comment' : 'topic'}">${
-            isCommentHit ? `评论 · 第 ${t.matchPostNumber} 楼` : '帖子'
-          }</span>`
+        ? `<span class="px-kind" data-kind="${isCommentHit ? 'comment' : 'topic'}">${esc(
+            t.pxKindLabel || (isCommentHit ? `评论 · 第 ${t.matchPostNumber} 楼` : '帖子')
+          )}</span>`
         : '';
 
     // 原生卡片只给「回复 / 浏览」，这里把能拿到的都补上
@@ -1356,7 +1361,13 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
           </div>
         </div>
         ${tagsHTML}
-        ${t.excerpt ? `<p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">${esc(t.excerpt)}</p>` : ''}
+        ${
+          t.pxSnippetHtml
+            ? `<p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">${t.pxSnippetHtml}</p>`
+            : t.excerpt
+            ? `<p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">${esc(t.excerpt)}</p>`
+            : ''
+        }
       </div>
       <div class="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs leading-4.5 text-dimmed">
         <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 font-medium">
@@ -4205,17 +4216,20 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   }
 
   /* ============================================================
-   * 13. Super 搜索 —— 严格关键词搜索 + 本地候选池（增量缓存 + 清理失效）
+   * 13. Super 搜索 —— 严格关键词搜索 + 本地候选池（增量缓存 + 自动清理失效）
    * ------------------------------------------------------------
    * 为什么不用站内搜索：
    *   站内 /topics?q= 是「相关度」模糊匹配，搜 pick 出 29 条、搜 pickcat 出 500 条，
    *   关键词越短命中越多，完全没法当检索用。这里改成：
    *   1) 候选池：本地缓存全站主题 + 回复，按时间水位线增量拉取；
-   *   2) 严格匹配：所有词都要命中（AND），支持 "精确短语" / -排除 / title: 作者: 限定；
+   *   2) 匹配：默认严格（所有词都要命中），也可切宽松（任意词命中）；
    *   3) 缓存增量：本次已加载到 YYYY-MM-DD HH:MM:SS，下次只拉这之后的内容；
-   *   4) 清理失效：帖子被删 / 回复被删 / 楼层 deleted → 从池子里剔除。
+   *   4) 清理失效：帖子 404 / 楼层 deleted / 整篇列表里消失的回复 → 自动剔出池子。
+   *
+   * 关键词来自站点的搜索框（URL 上的 q），面板里不再放第二个输入框。
    * ============================================================ */
   const SUPER_POOL_KEY = 'pictExt:superpool:v1';
+  const SUPER_UI_KEY = 'pictExt:superui:v1';
   const SUPER_ID = 'pictExt-super';
 
   const SUPER_MAX_TOPICS = 1500;   // 池子里最多留多少主题（超了丢最老的）
@@ -4223,6 +4237,8 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   const SUPER_TOPIC_PAGES = 8;     // 一次同步最多翻几页主题（每页 50）
   const SUPER_POST_PAGES = 2;      // 每个有新活动的帖最多翻几页回复
   const SUPER_REPLY_TOPICS = 20;   // 一次同步最多给多少个帖子补回复（避免请求打爆）
+  const SUPER_PRUNE_SAMPLE = 40;   // 每次同步后抽查多少个主题，确认是否已被删
+  const SUPER_PRUNE_WORKERS = 6;   // 抽查并发
   const SUPER_REPLY_CHARS = 500;   // 单条回复正文最多留多少字（够搜就行）
   const SUPER_EXCERPT_CHARS = 600;
   const SUPER_RESULT_MAX = 200;    // 一次最多返回多少条结果
@@ -4230,15 +4246,19 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   /** 池子（内存态；持久化在 localStorage） */
   const superPool = {
     v: 1,
-    watermark: 0,     // 已加载到的最后时间点（毫秒）
-    updatedAt: 0,     // 上次同步完成时间
-    topics: {},       // id -> 主题记录
-    replies: {},      // id -> 回复记录
+    watermark: 0,      // 已加载到的最后时间点（毫秒）
+    updatedAt: 0,      // 上次同步完成时间
+    lastPruneAt: 0,    // 上次清理时间
+    pruneOffset: 0,    // 轮转抽查的游标
+    topics: {},        // id -> 主题记录
+    replies: {},       // id -> 回复记录
   };
 
+  const superState = { scope: 'all', sort: 'relevance', mode: 'strict', host: null, mounted: false, urlQ: '' };
   let superPoolLoaded = false;
   let superSyncing = false;
   let superSyncError = '';
+  let superStatus = '';
 
   /* ------------------------------------------------------------
    * 13.1 存储
@@ -4255,6 +4275,8 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
           superPool.v = 1;
           superPool.watermark = Number(p.watermark) || 0;
           superPool.updatedAt = Number(p.updatedAt) || 0;
+          superPool.lastPruneAt = Number(p.lastPruneAt) || 0;
+          superPool.pruneOffset = Number(p.pruneOffset) || 0;
           superPool.topics = p.topics && typeof p.topics === 'object' ? p.topics : {};
           superPool.replies = p.replies && typeof p.replies === 'object' ? p.replies : {};
         }
@@ -4288,6 +4310,31 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       } catch {
         /* 无痕模式等场景写不进去就算了，池子仍然在内存里可用 */
       }
+    }
+  }
+
+  /** 面板偏好（范围 / 匹配方式 / 排序）单独存，跟设置项分开 */
+  function loadSuperUI() {
+    try {
+      const raw = localStorage.getItem(SUPER_UI_KEY);
+      if (raw) {
+        const u = JSON.parse(raw) || {};
+        if (u.scope) superState.scope = u.scope;
+        if (u.sort) superState.sort = u.sort;
+        if (u.mode) superState.mode = u.mode;
+      }
+    } catch {
+      /* 忽略 */
+    }
+  }
+  function saveSuperUI() {
+    try {
+      localStorage.setItem(
+        SUPER_UI_KEY,
+        JSON.stringify({ scope: superState.scope, sort: superState.sort, mode: superState.mode })
+      );
+    } catch {
+      /* 忽略 */
     }
   }
 
@@ -4336,7 +4383,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   }
 
   /* ------------------------------------------------------------
-   * 13.3 候选池同步（增量 + 清理失效）
+   * 13.3 候选池同步（增量 + 自动清理失效）
    * ---------------------------------------------------------- */
 
   function topicRecord(it) {
@@ -4390,9 +4437,8 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   }
 
   /**
-   * 同步候选池。
+   * 同步候选池（增量）。
    * @param {{onProgress?:(st:object)=>void, force?:boolean}} opts
-   *   force=true 时忽略水位线，全量重来（顺带把失效条目清干净）
    */
   async function syncSuperPool(opts) {
     const options = opts || {};
@@ -4430,7 +4476,6 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
             // 新主题：它下面的回复也要拉（池子里的回复才算全）
             if (rec._a >= wm) touched.set(rec.id, rec);
           } else {
-            // 已有的主题：更新计数与活跃时间，标记为「有活动」→ 待会儿补回复
             const changed =
               rec.replyCount !== prev.replyCount || rec._a > prev._a || rec.lastActivityAt !== prev.lastActivityAt;
             pool.topics[rec.id] = { ...prev, ...rec };
@@ -4456,7 +4501,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
         .slice(0, SUPER_REPLY_TOPICS);
       for (const topic of toSync) {
         try {
-          const r = await syncTopicReplies(topic, wm, st);
+          const r = await syncTopicReplies(topic, wm);
           st.replies += r.added;
           st.removed += r.removed;
         } catch (err) {
@@ -4470,6 +4515,11 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
 
       pool.watermark = Math.max(pool.watermark || 0, maxSeen);
       saveSuperPool();
+
+      // 失效清理：自动做（之前手动点「清理失效」会一直卡住）
+      const pruned = await autoPruneSuperPool();
+      st.removed += pruned.removed;
+
       st.done = true;
       report();
       return st;
@@ -4486,7 +4536,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   /**
    * 补某个主题的回复：只收比水位线新的；整篇列完还缺的那些 = 已被删 → 剔除。
    */
-  async function syncTopicReplies(topic, wm, st) {
+  async function syncTopicReplies(topic, wm) {
     const pool = loadSuperPool();
     let cursor = null;
     let added = 0;
@@ -4546,44 +4596,65 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
         }
       }
     }
-    if (st) st.removed += 0;
     return { added, removed };
   }
 
-  /** 手动清理：把池子里已经失效（404 / deleted）的条目剔掉 */
-  async function pruneSuperPool(opts) {
+  /**
+   * 自动清理失效条目：抽查主题，确认是不是已经被删（404）。
+   * 一次全量几百个请求太重（之前手动点「清理失效」就是卡在这儿），所以改成
+   * **每轮只抽查 SUPER_PRUNE_SAMPLE 个、轮着来**（并发 6），这样每轮请求量恒定，
+   * 池子里的老条目也会被逐轮覆盖到。
+   */
+  async function autoPruneSuperPool(opts) {
     const options = opts || {};
     const pool = loadSuperPool();
     const st = { checked: 0, removed: 0, done: false };
     const report = () => {
       if (options.onProgress) options.onProgress({ ...st });
     };
-    const topics = Object.values(pool.topics);
-    for (const t of topics) {
-      st.checked++;
-      try {
-        await apiGet('/topics/' + encodeURIComponent(t.id), null, {});
-      } catch (err) {
-        if (err && err.status === 404) {
-          dropTopic(t.id);
-          st.removed++;
-        }
-      }
-      if (st.checked % 20 === 0) report();
+    const topics = Object.values(pool.topics).sort((a, b) => b._a - a._a);
+    if (!topics.length) {
+      st.done = true;
+      return st;
     }
+    // 轮转抽查：这一轮从上次的位置接着往后数
+    const size = Math.min(SUPER_PRUNE_SAMPLE, topics.length);
+    const start = (pool.pruneOffset || 0) % topics.length;
+    const list = [];
+    for (let i = 0; i < size; i++) list.push(topics[(start + i) % topics.length]);
+    pool.pruneOffset = (start + size) % topics.length;
+    pool.lastPruneAt = Date.now();
+
+    let idx = 0;
+    const worker = async () => {
+      while (idx < list.length) {
+        const t = list[idx++];
+        try {
+          await apiGet('/topics/' + encodeURIComponent(t.id));
+        } catch (err) {
+          if (err && err.status === 404) {
+            dropTopic(t.id);
+            st.removed++;
+          }
+        }
+        st.checked++;
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(SUPER_PRUNE_WORKERS, list.length) }, worker));
+
+    saveSuperPool();
     st.done = true;
     report();
-    saveSuperPool();
     return st;
   }
 
   /* ------------------------------------------------------------
-   * 13.4 严格关键词匹配
+   * 13.4 关键词匹配（严格 / 宽松）
    * ---------------------------------------------------------- */
 
   /**
    * 查询语法：
-   *   普通词        —— 必须全部命中（AND，严格）
+   *   普通词        —— 严格模式下必须全部命中；宽松模式下任意一个命中即可
    *   "整段短语"    —— 必须原样出现
    *   -词           —— 排除
    *   title:词      —— 只在标题里找
@@ -4634,12 +4705,16 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
 
   const has = (hay, needle) => !!needle && hay.toLowerCase().includes(needle);
 
-  /** 单条候选（主题或回复）是否命中 + 打分 */
-  function matchSuperItem(item, q) {
+  /**
+   * 单条候选（主题或回复）是否命中 + 打分。
+   * mode='strict'：所有词都要命中；mode='loose'：任意一个词命中即可（命中越多分越高）。
+   */
+  function matchSuperItem(item, q, mode) {
     const title = (item.title || '').toLowerCase();
     const body = (item.text || '').toLowerCase();
     const author = (item.authorName || '').toLowerCase();
     let score = 0;
+    let hitCount = 0;
 
     for (const term of q.terms) {
       let hit = false;
@@ -4657,8 +4732,12 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       if (term.negate) {
         if (hit) return null; // 排除词命中 → 整条出局
       } else {
-        if (!hit) return null; // 严格：所有词都要命中
-        score += bonus;
+        if (hit) {
+          hitCount++;
+          score += bonus;
+        } else if (mode === 'strict') {
+          return null; // 严格：所有词都要命中
+        }
       }
     }
 
@@ -4668,6 +4747,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     }
 
     if (!q.terms.length && !q.phrases.length) return null;
+    if (mode === 'loose' && hitCount === 0) return null;
 
     // 整串完全等于标题 → 最高分
     const whole = q.terms.map((t) => t.text).join(' ');
@@ -4683,7 +4763,10 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     const options = opts || {};
     const pool = loadSuperPool();
     const q = parseSuperQuery(rawQuery);
-    if (q.empty) return { query: rawQuery, parsed: q, items: [], total: 0, scope: q.scope, watermark: pool.watermark };
+    const mode = options.mode || superState.mode || 'strict';
+    if (q.empty) {
+      return { query: rawQuery, parsed: q, items: [], total: 0, scope: q.scope, mode, watermark: pool.watermark };
+    }
 
     const scope = options.scope && options.scope !== 'all' ? options.scope : q.scope;
     const hits = [];
@@ -4692,7 +4775,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     const consider = (item, type) => {
       if (scope === 'topic' && type !== 'topic') return;
       if (scope === 'reply' && type !== 'reply') return;
-      const score = matchSuperItem(item, q);
+      const score = matchSuperItem(item, q, mode);
       if (score === null) return;
       total++;
       hits.push({
@@ -4706,6 +4789,10 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
         authorName: item.authorName || '',
         createdAt: item.createdAt || '',
         replyCount: type === 'topic' ? item.replyCount : null,
+        viewCount: type === 'topic' ? item.viewCount : null,
+        likeCount: type === 'topic' ? item.likeCount : null,
+        bookmarkCount: type === 'topic' ? item.bookmarkCount : null,
+        tags: type === 'topic' ? item.tags : null,
         score,
         _t: item._t || 0,
       });
@@ -4714,11 +4801,40 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     for (const t of Object.values(pool.topics)) consider(t, 'topic');
     for (const r of Object.values(pool.replies)) consider(r, 'reply');
 
-    const sort = options.sort || 'relevance';
+    // 命中的是回复时，统计数据取所属帖子的（池子里可能没有那个帖）
+    for (const h of hits) {
+      if (h.type !== 'reply') continue;
+      const t = pool.topics[h.topicId];
+      if (t) {
+        h.replyCount = t.replyCount;
+        h.viewCount = t.viewCount;
+        h.likeCount = t.likeCount;
+        h.bookmarkCount = t.bookmarkCount;
+        h.tags = t.tags;
+      }
+    }
+
+    const sort = options.sort || superState.sort || 'relevance';
+    const num = (v) => (typeof v === 'number' ? v : -1);
     hits.sort((a, b) => {
-      if (sort === 'latest') return b._t - a._t;
-      if (sort === 'replies') return (b.replyCount || 0) - (a.replyCount || 0);
-      return b.score - a.score || b._t - a._t;
+      switch (sort) {
+        case 'latest':
+          return b._t - a._t;
+        case 'earliest':
+          return a._t - b._t;
+        case 'views':
+          return num(b.viewCount) - num(a.viewCount);
+        case 'likes':
+          return num(b.likeCount) - num(a.likeCount);
+        case 'replies':
+          return num(b.replyCount) - num(a.replyCount);
+        case 'bookmarks':
+          return num(b.bookmarkCount) - num(a.bookmarkCount);
+        case 'hot':
+          return num(b.replyCount) * 2 + num(b.likeCount) - (num(a.replyCount) * 2 + num(a.likeCount));
+        default:
+          return b.score - a.score || b._t - a._t;
+      }
     });
 
     const limit = options.limit || SUPER_RESULT_MAX;
@@ -4728,6 +4844,8 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       items: hits.slice(0, limit),
       total,
       scope,
+      mode,
+      sort,
       watermark: pool.watermark,
       poolTopics: Object.keys(pool.topics).length,
       poolReplies: Object.keys(pool.replies).length,
@@ -4776,61 +4894,74 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     return (start > 0 ? '…' : '') + s.slice(start, end) + (end < s.length ? '…' : '');
   }
 
-  function superResultHTML(hit, q) {
+  const SUPER_SORTS = [
+    ['relevance', '相关度'],
+    ['latest', '最新'],
+    ['earliest', '最早'],
+    ['views', '最多浏览'],
+    ['likes', '最多点赞'],
+    ['replies', '最多回复'],
+    ['bookmarks', '最多收藏'],
+    ['hot', '最热'],
+  ];
+
+  /** 把命中项转成站点卡片结构（复用 08-cards 的 cardHTML，风格与首页帖子一致） */
+  function superCardModel(hit) {
     const isReply = hit.type === 'reply';
-    const href = isReply
-      ? `/forum/post/${encodeURIComponent(hit.id)}#post-${hit.postNumber}`
-      : `/forum/post/${encodeURIComponent(hit.id)}`;
-    const when = hit.createdAt ? new Date(hit.createdAt).toLocaleString('zh-CN', { hour12: false }) : '';
-    const snippet = snippetSuper(hit.text, q, 70);
-    return `<article class="px-super-item" data-px-super-type="${hit.type}" data-px-super-id="${esc(hit.id)}">
-      <div class="px-super-item-head">
-        <span class="px-super-badge" data-kind="${isReply ? 'reply' : 'topic'}">${isReply ? `回复 · 第 ${hit.postNumber} 楼` : '帖子'}</span>
-        <h3 class="px-super-title"><a href="${href}">${highlightSuper(hit.title, q)}</a></h3>
-      </div>
-      ${snippet ? `<p class="px-super-snip">${highlightSuper(snippet, q)}</p>` : ''}
-      <div class="px-super-meta">
-        <span class="px-super-author">${esc(hit.authorName || '匿名')}</span>
-        <span>${esc(timeAgo(hit.createdAt))}</span>
-        ${hit.replyCount !== null && hit.replyCount !== undefined ? `<span>回复 ${fmtNum(hit.replyCount)}</span>` : ''}
-        <span class="px-super-score">得分 ${Math.round(hit.score)}</span>
-      </div>
-    </article>`;
+    return {
+      id: isReply ? hit.topicId : hit.id,
+      title: hit.title,
+      excerpt: '',
+      author: { id: hit.authorId, username: hit.authorName },
+      replyCount: hit.replyCount ?? 0,
+      viewCount: hit.viewCount ?? 0,
+      likeCount: hit.likeCount,
+      bookmarkCount: hit.bookmarkCount,
+      createdAt: hit.createdAt,
+      editedAt: null,
+      lastActivityAt: hit.createdAt,
+      tags: (hit.tags || []).map((slug) => ({ slug, name: slug })),
+      pinned: false,
+      matchPostNumber: isReply ? hit.postNumber : null,
+      pxKindLabel: isReply ? `回复 · 第 ${hit.postNumber} 楼` : '帖子',
+    };
   }
 
   function superPanelHTML(q) {
+    const sortChips = SUPER_SORTS.map(
+      ([k, label]) => `<button type="button" data-px-super-sort="${k}" class="px-super-chip">${esc(label)}</button>`
+    ).join('');
     return `<div class="px-super-head">
         <div class="px-super-brand"><span class="px-super-logo">⚡</span><span>Super 搜索</span></div>
-        <div class="px-super-sub">严格关键词匹配 · 本地候选池增量缓存</div>
-        <button class="px-super-close" type="button" data-px-super-close aria-label="关闭">✕</button>
+        <div class="px-super-sub">严格 / 宽松关键词匹配 · 本地候选池增量缓存</div>
       </div>
       <div class="px-super-searchbar">
-        <input class="px-super-input" type="search" placeholder="严格搜索：所有词都要命中，支持 &quot;短语&quot; / -排除 / title: / author:" value="${esc(q || '')}" aria-label="Super 搜索关键词" />
-        <button class="px-super-btn" type="button" data-px-super-sync>同步候选池</button>
-        <button class="px-super-btn ghost" type="button" data-px-super-prune>清理失效</button>
+        <span class="px-super-keyword">关键词</span>
+        <span class="px-super-keyword-value" data-px-super-keyword>${esc(q || '（在站内搜索框输入）')}</span>
+        <span class="px-super-hint">用站点的搜索框输入关键词，这里用候选池做严格检索</span>
       </div>
       <div class="px-super-chips">
         <button type="button" data-px-super-scope="all" class="px-super-chip">全部</button>
         <button type="button" data-px-super-scope="topic" class="px-super-chip">只看帖子</button>
         <button type="button" data-px-super-scope="reply" class="px-super-chip">只看回复</button>
         <span class="px-super-sep"></span>
-        <button type="button" data-px-super-sort="relevance" class="px-super-chip">相关度</button>
-        <button type="button" data-px-super-sort="latest" class="px-super-chip">最新</button>
-        <button type="button" data-px-super-sort="replies" class="px-super-chip">最多回复</button>
+        <button type="button" data-px-super-mode="strict" class="px-super-chip">严格匹配</button>
+        <button type="button" data-px-super-mode="loose" class="px-super-chip">宽松匹配</button>
+        <span class="px-super-sep"></span>
+        ${sortChips}
       </div>
       <div class="px-super-status" data-px-super-status></div>
       <div class="px-super-results" data-px-super-results aria-live="polite"></div>`;
   }
 
   /* ------------------------------------------------------------
-   * 13.6 挂载（搜索页接管 / Ctrl+K 浮层）
+   * 13.6 挂载
    * ---------------------------------------------------------- */
-
-  const superState = { scope: 'all', sort: 'relevance', overlay: false, host: null, mounted: false, dirty: false, urlQ: '' };
 
   function superStatusText(res) {
     const pool = loadSuperPool();
     const bits = [];
+    if (superStatus) bits.push(superStatus);
     bits.push(`命中 ${res.total}`);
     if (res.items.length) bits.push(`显示 ${res.items.length}`);
     bits.push(`池子 ${Object.keys(pool.topics).length} 帖 / ${Object.keys(pool.replies).length} 回复`);
@@ -4842,97 +4973,68 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   function renderSuperResults() {
     const host = superState.host;
     if (!host) return;
-    const input = host.querySelector('.px-super-input');
-    const q = input ? input.value : '';
-    const res = searchSuperPool(q, { scope: superState.scope, sort: superState.sort });
+    const q = new URLSearchParams(location.search).get('q') || '';
+    const res = searchSuperPool(q, { scope: superState.scope, sort: superState.sort, mode: superState.mode });
     const status = host.querySelector('[data-px-super-status]');
     const list = host.querySelector('[data-px-super-results]');
+    const kw = host.querySelector('[data-px-super-keyword]');
+    if (kw) kw.textContent = q || '（在站内搜索框输入）';
     if (status) status.textContent = superStatusText(res);
     // chip 选中态
     for (const b of host.querySelectorAll('[data-px-super-scope]')) {
       b.dataset.active = String(b.dataset.pxSuperScope === superState.scope);
+    }
+    for (const b of host.querySelectorAll('[data-px-super-mode]')) {
+      b.dataset.active = String(b.dataset.pxSuperMode === superState.mode);
     }
     for (const b of host.querySelectorAll('[data-px-super-sort]')) {
       b.dataset.active = String(b.dataset.pxSuperSort === superState.sort);
     }
     if (!list) return;
     if (res.parsed.empty) {
-      list.innerHTML = `<div class="px-super-empty">输入关键词开始严格搜索（所有词都要命中）</div>`;
+      list.innerHTML = `<div class="px-super-empty">在站点的搜索框里输入关键词，这里会用候选池做严格检索</div>`;
       return;
     }
     if (!res.items.length) {
-      list.innerHTML = `<div class="px-super-empty">没有严格命中。换个词，或先「同步候选池」把更新的内容拉进来。</div>`;
+      list.innerHTML = `<div class="px-super-empty">没有命中。可以切「宽松匹配」，或等候选池同步到更新内容。</div>`;
       return;
     }
-    list.innerHTML = res.items.map((h) => superResultHTML(h, res.parsed)).join('');
+    const shell = nativeCardShell('search');
+    list.innerHTML = res.items
+      .map((h) => {
+        const model = superCardModel(h);
+        const snip = snippetSuper(h.text, res.parsed, 90);
+        // 命中片段带高亮（pxSnippetHtml 是已转义 + <mark> 的 HTML，不再二次转义）
+        model.pxSnippetHtml = highlightSuper(snip, res.parsed);
+        return cardHTML(model, 'createdAt', shell, 'search');
+      })
+      .join('');
   }
 
   function superBind(host) {
     if (!host || host.dataset.pxBound === '1') return;
     host.dataset.pxBound = '1';
-    const input = host.querySelector('.px-super-input');
 
-    host.addEventListener('input', (e) => {
-      if (e.target !== input) return;
-      superState.dirty = true; // 用户自己改过关键词 → 后面重挂载别把它冲掉
-      renderSuperResults();
-    });
     host.addEventListener('click', (e) => {
       const scopeBtn = e.target.closest('[data-px-super-scope]');
       if (scopeBtn) {
         superState.scope = scopeBtn.dataset.pxSuperScope;
-        superState.host = host;
+        saveSuperUI();
+        renderSuperResults();
+        return;
+      }
+      const modeBtn = e.target.closest('[data-px-super-mode]');
+      if (modeBtn) {
+        superState.mode = modeBtn.dataset.pxSuperMode;
+        saveSuperUI();
         renderSuperResults();
         return;
       }
       const sortBtn = e.target.closest('[data-px-super-sort]');
       if (sortBtn) {
         superState.sort = sortBtn.dataset.pxSuperSort;
-        superState.host = host;
+        saveSuperUI();
         renderSuperResults();
-        return;
-      }
-      if (e.target.closest('[data-px-super-sync]')) {
-        const btn = e.target.closest('[data-px-super-sync]');
-        btn.disabled = true;
-        btn.textContent = '同步中…';
-        syncSuperPool({
-          onProgress: () => {
-            superState.host = host;
-            renderSuperResults();
-          },
-        }).then(() => {
-          btn.disabled = false;
-          btn.textContent = '同步候选池';
-          superState.host = host;
-          renderSuperResults();
-        });
-        return;
-      }
-      if (e.target.closest('[data-px-super-prune]')) {
-        const btn = e.target.closest('[data-px-super-prune]');
-        btn.disabled = true;
-        btn.textContent = '清理中…';
-        pruneSuperPool({
-          onProgress: () => {
-            superState.host = host;
-            renderSuperResults();
-          },
-        }).then(() => {
-          btn.disabled = false;
-          btn.textContent = '清理失效';
-          superState.host = host;
-          renderSuperResults();
-        });
-        return;
-      }
-      if (e.target.closest('[data-px-super-close]')) {
-        closeSuperOverlay();
-      }
-    });
-    host.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        closeSuperOverlay();
       }
     });
   }
@@ -4951,88 +5053,53 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       host.dataset.pxBuilt = '1';
     }
     const q = new URLSearchParams(location.search).get('q') || '';
-    const input = host.querySelector('.px-super-input');
-    // URL 里的关键词变了才覆盖输入框；用户自己改过的内容不要冲掉（站点会重渲染，mount 会被反复调用）
-    if (input && (!superState.dirty || superState.urlQ !== q)) {
-      input.value = q;
-      superState.dirty = false;
+    if (superState.urlQ !== q) {
+      superState.urlQ = q;
+      const kw = host.querySelector('[data-px-super-keyword]');
+      if (kw) kw.textContent = q || '（在站内搜索框输入）';
     }
-    superState.urlQ = q;
     if (anchor.parentElement) anchor.parentElement.insertBefore(host, anchor);
     else anchor.insertAdjacentElement('beforebegin', host);
     superState.host = host;
     superState.mounted = true;
     superBind(host);
     renderSuperResults();
-    // 后台顺手同步一次（空池 / 超过 10 分钟才拉），走增量
+
+    // 候选池自动更新：进面板就同步一次（增量），失效条目同步清掉
     const pool = loadSuperPool();
-    const stale = !pool.updatedAt || Date.now() - pool.updatedAt > 10 * 60 * 1000;
+    const stale = !pool.updatedAt || Date.now() - pool.updatedAt > 5 * 60 * 1000;
     if (stale && !superSyncing) {
-      setTimeout(() => {
-        syncSuperPool({
-          onProgress: () => {
-            superState.host = host;
-            renderSuperResults();
-          },
-        });
-      }, 400);
+      superStatus = '正在同步候选池…';
+      renderSuperResults();
+      syncSuperPool({
+        onProgress: (st) => {
+          superStatus = st.done
+            ? `已同步 ${st.pages} 页 · 新增 ${st.topics} 帖 / ${st.replies} 回复 · 清理失效 ${st.removed} 条`
+            : `正在同步候选池…（${st.pages} 页）`;
+          superState.host = host;
+          renderSuperResults();
+        },
+      }).then(() => {
+        superStatus = '';
+        superState.host = host;
+        renderSuperResults();
+      });
     }
     return true;
   }
 
   function unmountSuperSearch() {
     const host = document.getElementById(SUPER_ID);
-    if (host && !superState.overlay) {
+    if (host) {
       host.remove();
       superState.mounted = false;
       superState.host = null;
-      superState.dirty = false;
       superState.urlQ = '';
     }
   }
 
-  /** Ctrl/⌘+K 浮层 */
-  function openSuperOverlay() {
-    let host = document.getElementById(SUPER_ID + '-overlay');
-    if (!host) {
-      host = document.createElement('div');
-      host.id = SUPER_ID + '-overlay';
-      host.className = 'px-super-overlay';
-      host.innerHTML = superPanelHTML('');
-      document.body.appendChild(host);
-      superBind(host);
-    }
-    superState.overlay = true;
-    superState.host = host;
-    host.style.display = 'flex';
-    const input = host.querySelector('.px-super-input');
-    if (input) {
-      input.value = '';
-      input.focus();
-    }
-    renderSuperResults();
-  }
-
-  function closeSuperOverlay() {
-    const host = document.getElementById(SUPER_ID + '-overlay');
-    if (host) host.style.display = 'none';
-    superState.overlay = false;
-    superState.host = null;
-  }
-
-  function bindSuperHotkey() {
-    document.addEventListener(
-      'keydown',
-      (e) => {
-        if (!(e.ctrlKey || e.metaKey)) return;
-        if (e.key !== 'k' && e.key !== 'K') return;
-        if (!settings.superSearch) return;
-        e.preventDefault();
-        if (superState.overlay) closeSuperOverlay();
-        else openSuperOverlay();
-      },
-      true
-    );
+  function initSuperSearch() {
+    loadSuperUI();
   }
 
   /* ============================================================
@@ -5604,13 +5671,13 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     bindReplyToolbarEvents();
     bindDelegatedUI();
     bindStatsEvents();
-    bindSuperHotkey();
+    initSuperSearch();
     bindHashFocus();
     startObserver();
     scheduleMount();
     scheduleReplyToolbar();
     console.info(
-      '%cpictExt%c v1.10.0 扩展已加载 · 只读 · Cookie 仅在本页内存驻留，离开即清除',
+      '%cpictExt%c v1.10.1 扩展已加载 · 只读 · Cookie 仅在本页内存驻留，离开即清除',
       'background:#3b82f6;color:#fff;border-radius:3px;padding:1px 5px;font-weight:700',
       'color:#6b7280'
     );

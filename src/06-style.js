@@ -226,7 +226,10 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   color:var(--pxs-dim); font-size:15px; line-height:1; padding:6px 8px; border-radius:8px;
 }
 .px-super-close:hover{ color:var(--pxs-text); background:color-mix(in srgb, var(--pxs-primary) 10%, transparent); }
-.px-super-searchbar{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:12px 14px; border:1px solid var(--pxs-border); background:var(--pxs-card); }
+.px-super-searchbar{ display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; padding:10px 14px; border:1px solid var(--pxs-border); background:var(--pxs-card); }
+.px-super-keyword{ font-size:12px; color:var(--pxs-dim); }
+.px-super-keyword-value{ font-size:14px; font-weight:700; color:var(--pxs-text); word-break:break-all; }
+.px-super-hint{ font-size:12px; color:var(--pxs-dim); margin-left:auto; }
 .px-super-input{
   flex:1 1 260px; min-width:0; height:38px; padding:0 12px;
   border-radius:10px; border:1px solid var(--pxs-border);
@@ -264,6 +267,11 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   padding:10px; border:1px solid var(--pxs-border); border-top:0;
   border-radius:0 0 12px 12px; background:var(--pxs-card);
 }
+.px-super-results > article{ content-visibility:auto; contain-intrinsic-size:auto 170px; }
+.px-super-results mark.px-mark{
+  background:color-mix(in srgb, var(--pxs-primary) 30%, transparent);
+  color:inherit; border-radius:3px; padding:0 1px;
+}
 .px-super-empty{ padding:26px 12px; text-align:center; color:var(--pxs-dim); font-size:13px; }
 .px-super-item{
   padding:11px 13px; border-radius:10px; border:1px solid transparent;
@@ -292,21 +300,6 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   background:color-mix(in srgb, var(--pxs-primary) 30%, transparent);
   color:inherit; border-radius:3px; padding:0 1px;
 }
-/* Ctrl+K 浮层 */
-.px-super-overlay{
-  position:fixed; inset:0; z-index:2147483000;
-  display:none; align-items:flex-start; justify-content:center;
-  padding:8vh 16px 16px;
-  background:color-mix(in srgb, #000 45%, transparent);
-  backdrop-filter:blur(4px);
-}
-.px-super-overlay .px-super{
-  width:min(880px, 100%); max-height:82vh; overflow-y:auto; overscroll-behavior:contain;
-  border-radius:14px; border:1px solid var(--pxs-border);
-  background:var(--ui-bg,Canvas);
-  box-shadow:0 24px 60px rgba(0,0,0,.35);
-}
-.px-super-overlay .px-super-results{ background:transparent; }
 `;
 
   function injectStyle() {

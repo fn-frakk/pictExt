@@ -1,6 +1,6 @@
 {
   "name": "pictext",
-  "version": "1.10.0",
+  "version": "1.10.1",
   "private": true,
   "description": "PICKCAT 社区增强：帖子/评论排序、评论区翻页、右侧栏合集切换、搜索命中定位。MV3 内容脚本，零运行时依赖。",
   "license": "MIT",

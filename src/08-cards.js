@@ -92,13 +92,14 @@
 
     // 搜索结果里要分清「帖子」和「评论」：命中评论时站点给的是 match.postNumber
     // 第 1 楼就是帖子正文本身，别标成「评论」
+    // Super 搜索会自己指定标签文案（pxKindLabel：「帖子」/「回复 · 第 N 楼」）
     const isCommentHit =
       t.matchPostNumber !== null && t.matchPostNumber !== undefined && Number(t.matchPostNumber) > 1;
     const kindBadge =
       kind === 'search'
-        ? `<span class="px-kind" data-kind="${isCommentHit ? 'comment' : 'topic'}">${
-            isCommentHit ? `评论 · 第 ${t.matchPostNumber} 楼` : '帖子'
-          }</span>`
+        ? `<span class="px-kind" data-kind="${isCommentHit ? 'comment' : 'topic'}">${esc(
+            t.pxKindLabel || (isCommentHit ? `评论 · 第 ${t.matchPostNumber} 楼` : '帖子')
+          )}</span>`
         : '';
 
     // 原生卡片只给「回复 / 浏览」，这里把能拿到的都补上
@@ -122,7 +123,13 @@
           </div>
         </div>
         ${tagsHTML}
-        ${t.excerpt ? `<p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">${esc(t.excerpt)}</p>` : ''}
+        ${
+          t.pxSnippetHtml
+            ? `<p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">${t.pxSnippetHtml}</p>`
+            : t.excerpt
+            ? `<p class="mt-0.5 line-clamp-2 text-[13px] leading-[1.55] text-muted desktop:text-sm">${esc(t.excerpt)}</p>`
+            : ''
+        }
       </div>
       <div class="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs leading-4.5 text-dimmed">
         <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 font-medium">

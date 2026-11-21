@@ -9,13 +9,13 @@
     bindReplyToolbarEvents();
     bindDelegatedUI();
     bindStatsEvents();
-    bindSuperHotkey();
+    initSuperSearch();
     bindHashFocus();
     startObserver();
     scheduleMount();
     scheduleReplyToolbar();
     console.info(
-      '%cpictExt%c v1.10.0 扩展已加载 · 只读 · Cookie 仅在本页内存驻留，离开即清除',
+      '%cpictExt%c v1.10.1 扩展已加载 · 只读 · Cookie 仅在本页内存驻留，离开即清除',
       'background:#3b82f6;color:#fff;border-radius:3px;padding:1px 5px;font-weight:700',
       'color:#6b7280'
     );
