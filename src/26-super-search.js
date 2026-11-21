@@ -33,6 +33,7 @@
     updatedAt: 0,      // 上次同步完成时间
     lastPruneAt: 0,    // 上次清理时间
     pruneOffset: 0,    // 轮转抽查的游标
+    deepDepth: 0,      // 手动「深挖」到过的页数（比设置里的深度更深）
     topics: {},        // id -> 主题记录
     replies: {},       // id -> 回复记录
   };
@@ -68,6 +69,7 @@
           superPool.updatedAt = Number(p.updatedAt) || 0;
           superPool.lastPruneAt = Number(p.lastPruneAt) || 0;
           superPool.pruneOffset = Number(p.pruneOffset) || 0;
+          superPool.deepDepth = Number(p.deepDepth) || 0;
           superPool.topics = p.topics && typeof p.topics === 'object' ? p.topics : {};
           superPool.replies = p.replies && typeof p.replies === 'object' ? p.replies : {};
         }
@@ -250,7 +252,7 @@
       let cursor = null;
       let maxSeen = wm;
 
-      const maxPages = clampInt(settings.superPoolPages, 1, 30, SUPER_TOPIC_PAGES);
+      const maxPages = opts.deepPages || clampInt(settings.superPoolPages, 1, 30, SUPER_TOPIC_PAGES);
       for (let page = 0; page < maxPages; page++) {
         const data = await apiGet('/topics', { limit: PAGE_LIMIT, sort: 'latest', cursor });
         const items = data.items || [];
@@ -733,6 +735,7 @@
         <span class="px-super-keyword">关键词</span>
         <span class="px-super-keyword-value" data-px-super-keyword>${esc(q || '（在站内搜索框输入）')}</span>
         <span class="px-super-hint">用站点的搜索框输入关键词，这里用候选池做严格检索</span>
+        <button class="px-super-btn ghost" type="button" data-px-super-deeper>深挖候选池</button>
       </div>
       <div class="px-super-chips">
         <button type="button" data-px-super-scope="all" class="px-super-chip">全部</button>
@@ -912,14 +915,23 @@
   function refreshSuperPoolNow(opts) {
     const options = opts || {};
     const host = superState.host;
-    superStatus = '正在按新深度刷新候选池…';
+    const pool = loadSuperPool();
+    // 手动「深挖」：每次再多翻 10 页（上限 60 页），无视水位线往历史里挖
+    const deeper = !!options.deeper;
+    const deepPages = deeper
+      ? Math.min(60, Math.max(clampInt(settings.superPoolPages, 1, 30, SUPER_TOPIC_PAGES), (pool.deepDepth || 0) + 10))
+      : Math.max(clampInt(settings.superPoolPages, 1, 30, SUPER_TOPIC_PAGES), pool.deepDepth || 0);
+    if (deeper) pool.deepDepth = deepPages;
+    superStatus = deeper ? `正在深挖候选池…（最多 ${deepPages} 页）` : '正在按新深度刷新候选池…';
     if (host) updateSuperStatus(host);
     return syncSuperPool({
       deep: true,
+      deepPages,
       onProgress: (st) => {
         superStatus = st.done
-          ? `已刷新 ${st.pages} 页 · 新增 ${st.topics} 帖 / ${st.replies} 回复 · 清理失效 ${st.removed} 条`
-          : `正在按新深度刷新候选池…（${st.pages} 页）`;
+          ? `已刷新 ${st.pages} 页 · 新增 ${st.topics} 帖 / ${st.replies} 回复 · 清理失效 ${st.removed} 条` +
+            (deeper ? `（已深挖到 ${deepPages} 页）` : '')
+          : `${deeper ? '正在深挖候选池' : '正在按新深度刷新候选池'}…（${st.pages} 页）`;
         superState.host = host;
         if (host) updateSuperStatus(host);
       },

@@ -93,6 +93,21 @@
       return true;
     }
 
+    // Super 搜索：手动深挖候选池（多翻几页历史）
+    const sd = t.closest('[data-px-super-deeper]');
+    if (sd) {
+      ev.preventDefault();
+      if (sd.disabled) return true;
+      sd.disabled = true;
+      const label = sd.textContent;
+      sd.textContent = '深挖中…';
+      refreshSuperPoolNow({ deeper: true }).then(() => {
+        sd.disabled = false;
+        sd.textContent = label;
+      });
+      return true;
+    }
+
     // Super 搜索：范围 / 匹配方式 / 排序
     // 走 document 级委托（和别的扩展按钮一样）：站点重渲染把按钮换掉也不影响，
     // pointerdown 就响应，不会出现「要点好几次才生效」。

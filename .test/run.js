@@ -1297,6 +1297,15 @@ async function runSuperSearch() {
   await sleep(200);
   ok(panel.querySelector('[data-px-super-mode="loose"]').dataset.active === 'true', 'pointerdown 一次就切到「宽松匹配」');
 
+  // 5.65) 手动深挖按钮：点一下就多挖几页历史
+  const deeperBtn = panel.querySelector('[data-px-super-deeper]');
+  ok(!!deeperBtn, '面板上有「深挖候选池」按钮');
+  const topicReqsBefore = calls.filter((c) => new URL(c.url).pathname === '/api/v1/topics').length;
+  deeperBtn.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+  await sleep(1200);
+  const topicReqsAfter = calls.filter((c) => new URL(c.url).pathname === '/api/v1/topics').length;
+  ok(topicReqsAfter > topicReqsBefore, '深挖会多翻几页（发起了更多拉取）', topicReqsBefore + ' → ' + topicReqsAfter);
+
   // 5.7) 候选池深度改了 → 立刻按新深度刷新
   const set = boot(SETTINGS_HTML, 'http://localhost/settings', { settings: { superSearch: true } });
   await sleep(600);
