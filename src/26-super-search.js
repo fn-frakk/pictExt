@@ -187,6 +187,7 @@
       text: plainText(it.excerpt || '', SUPER_EXCERPT_CHARS),
       authorId: it.author?.id || '',
       authorName: it.author?.username || '',
+      authorAvatar: it.author?.avatar?.url || '',
       replyCount: Number(it.replyCount ?? 0),
       viewCount: Number(it.viewCount ?? 0),
       likeCount: typeof it.likeCount === 'number' ? it.likeCount : null,
@@ -208,6 +209,7 @@
       text: plainText(p.cookedHtml || '', SUPER_REPLY_CHARS),
       authorId: p.author?.id || '',
       authorName: p.author?.username || '',
+      authorAvatar: p.author?.avatar?.url || '',
       likeCount: Number(p.likeCount ?? 0),
       createdAt: p.createdAt || '',
       deleted: !!p.deleted,
@@ -252,7 +254,8 @@
       let cursor = null;
       let maxSeen = wm;
 
-      const maxPages = opts.deepPages || clampInt(settings.superPoolPages, 1, 30, SUPER_TOPIC_PAGES);
+      // 101 = 无限制：一直翻到没有下一页为止
+      const maxPages = opts.deepPages || clampInt(settings.superPoolPages, 1, 101, SUPER_TOPIC_PAGES);
       for (let page = 0; page < maxPages; page++) {
         const data = await apiGet('/topics', { limit: PAGE_LIMIT, sort: 'latest', cursor });
         const items = data.items || [];
@@ -583,6 +586,7 @@
         text: item.text || '',
         authorId: item.authorId || '',
         authorName: item.authorName || '',
+        authorAvatar: item.authorAvatar || '',
         createdAt: item.createdAt || '',
         replyCount: type === 'topic' ? item.replyCount : null,
         viewCount: type === 'topic' ? item.viewCount : null,
@@ -708,7 +712,7 @@
       id: isReply ? hit.topicId : hit.id,
       title: hit.title,
       excerpt: '',
-      author: { id: hit.authorId, username: hit.authorName },
+      author: { id: hit.authorId, username: hit.authorName, avatar: hit.authorAvatar ? { url: hit.authorAvatar } : null },
       replyCount: hit.replyCount ?? 0,
       viewCount: hit.viewCount ?? 0,
       likeCount: hit.likeCount,
@@ -918,9 +922,10 @@
     const pool = loadSuperPool();
     // 手动「深挖」：每次再多翻 10 页（上限 60 页），无视水位线往历史里挖
     const deeper = !!options.deeper;
+    const setPages = clampInt(settings.superPoolPages, 1, 101, SUPER_TOPIC_PAGES);
     const deepPages = deeper
-      ? Math.min(60, Math.max(clampInt(settings.superPoolPages, 1, 30, SUPER_TOPIC_PAGES), (pool.deepDepth || 0) + 10))
-      : Math.max(clampInt(settings.superPoolPages, 1, 30, SUPER_TOPIC_PAGES), pool.deepDepth || 0);
+      ? Math.min(101, Math.max(setPages, (pool.deepDepth || 0) + 10))
+      : Math.max(setPages, pool.deepDepth || 0);
     if (deeper) pool.deepDepth = deepPages;
     superStatus = deeper ? `正在深挖候选池…（最多 ${deepPages} 页）` : '正在按新深度刷新候选池…';
     if (host) updateSuperStatus(host);
@@ -954,7 +959,7 @@
       id: rec.id,
       title: rec.title,
       excerpt: rec.text,
-      author: { id: rec.authorId, username: rec.authorName },
+      author: { id: rec.authorId, username: rec.authorName, avatar: rec.authorAvatar ? { url: rec.authorAvatar } : null },
       replyCount: rec.replyCount,
       viewCount: rec.viewCount,
       likeCount: rec.likeCount,

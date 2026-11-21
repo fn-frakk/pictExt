@@ -1,6 +1,12 @@
 /**
- * pictExt / v1.10.4
+ * pictExt / v1.10.5
  * ---------------------------------------------------------------
+ * 【v1.10.5 变更】
+ * - 候选池里缓存的主题**把作者头像也存下来**，灌进首页 / 板块页排序池时一并带上；
+ *   老缓存（以前没存头像的）会在渲染前拉一次主题详情补齐头像，补完强制重画。
+ * - 「Super 搜索：候选池深度」上限从 30 改成 **101 = 无限制**（一直翻到全站没有更多）。
+ * ---------------------------------------------------------------
+ * 【v1.10.4 变更】
  * 【v1.10.4 变更】
  * - Super 面板新增「深挖候选池」按钮：点一下就多翻 10 页历史（上限 60 页），
  *   无视水位线往更老的内容里挖，深挖深度会记住；适合「刚搜不到某个老帖」时用。
@@ -221,7 +227,7 @@
     commentPageSize: 10,      // 评论每页楼层数（1-20）
     showStats: false,         // 首页「PICKCAT 数据统计」卡片（默认关，独立懒加载，不碰 feed）
     superSearch: true,       // Super 搜索：严格关键词搜索 + 本地候选池（默认开）
-    superPoolPages: 8,       // Super 候选池：每次同步翻几页主题（1-30，每页 50）
+    superPoolPages: 8,       // Super 候选池：每次同步翻几页主题（1-101，101 = 无限制，每页 50）
   };
 
   /** 把数字设置夹回合法区间，坏存档 / 手输都不至于把请求打爆 */
@@ -245,7 +251,7 @@
       merged.poolHotPages = clampInt(merged.poolHotPages, 1, 100, 3);
       merged.poolRenderChunk = clampInt(merged.poolRenderChunk, RENDER_CHUNK_MIN, RENDER_CHUNK_MAX, RENDER_CHUNK);
       merged.commentPageSize = clampInt(merged.commentPageSize, 1, 20, 10);
-      merged.superPoolPages = clampInt(merged.superPoolPages, 1, 30, 8);
+      merged.superPoolPages = clampInt(merged.superPoolPages, 1, 101, 8);
       return merged;
     } catch {
       return { ...DEFAULT_SETTINGS };
@@ -692,29 +698,39 @@
    * ---------------------------------------------------------- */
   const detailCache = new Map();
 
-  /** 搜索返回体没有 likeCount，用详情里的 firstPost.likeCount 补 */
-  async function fetchLikeCount(id) {
+  /**
+   * 拉一次主题详情，补两样东西：赞数（列表接口在搜索/某些链里不给）与作者头像。
+   * 头像特别重要 —— 候选池里缓存的条目（来自 Super 池）可能没带头像，
+   * 卡片就会显示成「没有头像的匿名用户」。
+   */
+  async function fetchTopicMeta(id) {
     if (detailCache.has(id)) return detailCache.get(id);
-    let likes = 0;
+    const meta = { likes: 0, avatarUrl: '' };
     try {
       const d = await apiGet('/topics/' + encodeURIComponent(id));
-      likes = Number(d?.firstPost?.likeCount ?? 0);
+      meta.likes = Number(d?.firstPost?.likeCount ?? 0);
+      meta.avatarUrl = d?.author?.avatar?.url || '';
     } catch {
-      likes = 0;
+      /* 拉不到就留空，绝不伪造 */
     }
-    detailCache.set(id, likes);
-    return likes;
+    detailCache.set(id, meta);
+    return meta;
   }
 
   /** 只补齐排上队的那些；没补到的保持 null，后面会被排除，绝不伪造 0 赞 */
   async function enrichLikes(items, max = ENRICH_MAX) {
-    const need = items.filter((i) => i.likeCount === null);
+    const need = items.filter((i) => i.likeCount === null || !i.author?.avatar?.url);
+    // 缺头像的优先补 —— 卡片没头像最扎眼
+    need.sort((a, b) => (a.author?.avatar?.url ? 1 : 0) - (b.author?.avatar?.url ? 1 : 0));
     const slice = need.slice(0, max);
     let idx = 0;
     const workers = Array.from({ length: ENRICH_CONCURRENCY }, async () => {
       while (idx < slice.length) {
         const item = slice[idx++];
-        item.likeCount = await fetchLikeCount(item.id);
+        const meta = await fetchTopicMeta(item.id);
+        if (item.likeCount === null) item.likeCount = meta.likes;
+        if (!item.author) item.author = { id: '', username: '匿名' };
+        if (!item.author.avatar && meta.avatarUrl) item.author.avatar = { url: meta.avatarUrl };
       }
     });
     await Promise.all(workers);
@@ -1804,14 +1820,21 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       return poolDone(this.pool);
     }
 
-    /** 搜索接口不返回点赞数，排「最多点赞」前先把有数的那批补上 */
+    /**
+     * 排「最多点赞」前把点赞数补上；另外，只要池子里有条目**缺头像**也会顺手补
+     * （候选池里缓存的老条目可能没存头像，卡片没头像很扎眼）。
+     */
     async enrichPool(token) {
-      if (this.sort.metric !== 'likeCount') return;
-      const need = this.pool.items.filter((i) => i.likeCount === null || i.likeCount === undefined);
-      if (!need.length) return;
-      this.setNote(`正在补齐点赞数…（候选池里 ${Math.min(need.length, ENRICH_MAX)} 条）`);
+      const missingAvatar = this.pool.items.filter((i) => !i.author?.avatar?.url);
+      const needLikes = this.pool.items.filter((i) => i.likeCount === null || i.likeCount === undefined);
+      if (this.sort.metric !== 'likeCount' && !missingAvatar.length) return;
+      if (!needLikes.length && !missingAvatar.length) return;
+      this.setNote(`正在补齐点赞数 / 头像…（候选池里 ${Math.min(needLikes.length + missingAvatar.length, ENRICH_MAX)} 条）`);
       await enrichLikes(this.pool.items, ENRICH_MAX);
       if (token !== this.token) return;
+      // 补完要重画一次：否则卡片还是补之前的旧 DOM（头像补不上来）
+      const shown = Math.min(this.poolVisible || this.chunk(), this.pool.items.length);
+      this.syncList(this.pool.items.slice(0, shown), true);
     }
 
     /** 按当前指标挑出能参与排序的条目（没这项数据的排除，绝不拿 0 充数） */
@@ -3443,10 +3466,10 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       key: 'superPoolPages',
       type: 'number',
       min: 1,
-      max: 30,
+      max: 101,
       label: 'Super 搜索：候选池深度',
       desc:
-        '每次同步候选池时翻几页主题（每页 50 条，1-30）。池子越大，能搜到的老帖越多；同步只拉「水位线之后」的新内容，不会重复翻老页。',
+        '每次同步候选池时翻几页主题（每页 50 条，1-101）。**101 = 无限制**（一直翻到全站没有更多为止），池子越大，能搜到的老帖越多；日常同步只拉「水位线之后」的新内容，不会重复翻老页。改完立刻按新深度刷新。',
     },
     {
       key: 'superSearch',
@@ -4463,6 +4486,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       text: plainText(it.excerpt || '', SUPER_EXCERPT_CHARS),
       authorId: it.author?.id || '',
       authorName: it.author?.username || '',
+      authorAvatar: it.author?.avatar?.url || '',
       replyCount: Number(it.replyCount ?? 0),
       viewCount: Number(it.viewCount ?? 0),
       likeCount: typeof it.likeCount === 'number' ? it.likeCount : null,
@@ -4484,6 +4508,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       text: plainText(p.cookedHtml || '', SUPER_REPLY_CHARS),
       authorId: p.author?.id || '',
       authorName: p.author?.username || '',
+      authorAvatar: p.author?.avatar?.url || '',
       likeCount: Number(p.likeCount ?? 0),
       createdAt: p.createdAt || '',
       deleted: !!p.deleted,
@@ -4528,7 +4553,8 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       let cursor = null;
       let maxSeen = wm;
 
-      const maxPages = opts.deepPages || clampInt(settings.superPoolPages, 1, 30, SUPER_TOPIC_PAGES);
+      // 101 = 无限制：一直翻到没有下一页为止
+      const maxPages = opts.deepPages || clampInt(settings.superPoolPages, 1, 101, SUPER_TOPIC_PAGES);
       for (let page = 0; page < maxPages; page++) {
         const data = await apiGet('/topics', { limit: PAGE_LIMIT, sort: 'latest', cursor });
         const items = data.items || [];
@@ -4859,6 +4885,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
         text: item.text || '',
         authorId: item.authorId || '',
         authorName: item.authorName || '',
+        authorAvatar: item.authorAvatar || '',
         createdAt: item.createdAt || '',
         replyCount: type === 'topic' ? item.replyCount : null,
         viewCount: type === 'topic' ? item.viewCount : null,
@@ -4984,7 +5011,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       id: isReply ? hit.topicId : hit.id,
       title: hit.title,
       excerpt: '',
-      author: { id: hit.authorId, username: hit.authorName },
+      author: { id: hit.authorId, username: hit.authorName, avatar: hit.authorAvatar ? { url: hit.authorAvatar } : null },
       replyCount: hit.replyCount ?? 0,
       viewCount: hit.viewCount ?? 0,
       likeCount: hit.likeCount,
@@ -5194,9 +5221,10 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     const pool = loadSuperPool();
     // 手动「深挖」：每次再多翻 10 页（上限 60 页），无视水位线往历史里挖
     const deeper = !!options.deeper;
+    const setPages = clampInt(settings.superPoolPages, 1, 101, SUPER_TOPIC_PAGES);
     const deepPages = deeper
-      ? Math.min(60, Math.max(clampInt(settings.superPoolPages, 1, 30, SUPER_TOPIC_PAGES), (pool.deepDepth || 0) + 10))
-      : Math.max(clampInt(settings.superPoolPages, 1, 30, SUPER_TOPIC_PAGES), pool.deepDepth || 0);
+      ? Math.min(101, Math.max(setPages, (pool.deepDepth || 0) + 10))
+      : Math.max(setPages, pool.deepDepth || 0);
     if (deeper) pool.deepDepth = deepPages;
     superStatus = deeper ? `正在深挖候选池…（最多 ${deepPages} 页）` : '正在按新深度刷新候选池…';
     if (host) updateSuperStatus(host);
@@ -5230,7 +5258,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       id: rec.id,
       title: rec.title,
       excerpt: rec.text,
-      author: { id: rec.authorId, username: rec.authorName },
+      author: { id: rec.authorId, username: rec.authorName, avatar: rec.authorAvatar ? { url: rec.authorAvatar } : null },
       replyCount: rec.replyCount,
       viewCount: rec.viewCount,
       likeCount: rec.likeCount,
@@ -5862,7 +5890,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     scheduleMount();
     scheduleReplyToolbar();
     console.info(
-      '%cpictExt%c v1.10.4 扩展已加载 · 只读 · Cookie 仅在本页内存驻留，离开即清除',
+      '%cpictExt%c v1.10.5 扩展已加载 · 只读 · Cookie 仅在本页内存驻留，离开即清除',
       'background:#3b82f6;color:#fff;border-radius:3px;padding:1px 5px;font-weight:700',
       'color:#6b7280'
     );

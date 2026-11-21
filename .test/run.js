@@ -155,7 +155,11 @@ function installFetch(window, calls, detail, opts = {}) {
       if (opts.superGone && opts.superGone.includes(p.split('/').pop())) return err(404);
       const id = p.split('/').pop();
       const i = Number(String(id).replace('topic-', '').replace('topic-s', '')) || 1;
-      return json({ id, firstPost: { likeCount: i * 7 } });
+      return json({
+        id,
+        author: { id: 'u' + i, username: '用户' + i, avatar: { url: '/api/v1/avatars/a' + i } },
+        firstPost: { likeCount: i * 7 },
+      });
     }
     if (p === '/api/v1/topics') {
       if (q) {
@@ -1360,6 +1364,12 @@ async function runSuperSearch() {
   await sleep(1200);
   const titles = [...reuse.doc.querySelectorAll('#pictExt-panel .px-list h2')].map((h) => h.textContent.trim());
   ok(titles.some((t) => t.includes('缓存帖甲')), '排序候选池直接用上 Super 候选池的缓存', titles.slice(0, 5).join(' | '));
+  // 头像：缓存条目带头像时直接用；老缓存没带头像的，会拉详情补上
+  const cachedCard = [...reuse.doc.querySelectorAll('#pictExt-panel .px-list > article')].find((a) =>
+    (a.querySelector('h2')?.textContent || '').includes('缓存帖甲')
+  );
+  const avatarEl = cachedCard && cachedCard.querySelector('img[alt=""]');
+  ok(!!avatarEl, '候选池复用的卡片也有头像（缺头像会拉详情补齐）', cachedCard ? '有图' : '没找到卡片');
 
   // 6) 自动清理失效：被删的帖子不会留在池子里
   const withGone = boot(SEARCH_HTML, 'http://localhost/search?q=帖子', {

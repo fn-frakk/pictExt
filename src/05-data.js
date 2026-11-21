@@ -285,29 +285,39 @@
    * ---------------------------------------------------------- */
   const detailCache = new Map();
 
-  /** 搜索返回体没有 likeCount，用详情里的 firstPost.likeCount 补 */
-  async function fetchLikeCount(id) {
+  /**
+   * 拉一次主题详情，补两样东西：赞数（列表接口在搜索/某些链里不给）与作者头像。
+   * 头像特别重要 —— 候选池里缓存的条目（来自 Super 池）可能没带头像，
+   * 卡片就会显示成「没有头像的匿名用户」。
+   */
+  async function fetchTopicMeta(id) {
     if (detailCache.has(id)) return detailCache.get(id);
-    let likes = 0;
+    const meta = { likes: 0, avatarUrl: '' };
     try {
       const d = await apiGet('/topics/' + encodeURIComponent(id));
-      likes = Number(d?.firstPost?.likeCount ?? 0);
+      meta.likes = Number(d?.firstPost?.likeCount ?? 0);
+      meta.avatarUrl = d?.author?.avatar?.url || '';
     } catch {
-      likes = 0;
+      /* 拉不到就留空，绝不伪造 */
     }
-    detailCache.set(id, likes);
-    return likes;
+    detailCache.set(id, meta);
+    return meta;
   }
 
   /** 只补齐排上队的那些；没补到的保持 null，后面会被排除，绝不伪造 0 赞 */
   async function enrichLikes(items, max = ENRICH_MAX) {
-    const need = items.filter((i) => i.likeCount === null);
+    const need = items.filter((i) => i.likeCount === null || !i.author?.avatar?.url);
+    // 缺头像的优先补 —— 卡片没头像最扎眼
+    need.sort((a, b) => (a.author?.avatar?.url ? 1 : 0) - (b.author?.avatar?.url ? 1 : 0));
     const slice = need.slice(0, max);
     let idx = 0;
     const workers = Array.from({ length: ENRICH_CONCURRENCY }, async () => {
       while (idx < slice.length) {
         const item = slice[idx++];
-        item.likeCount = await fetchLikeCount(item.id);
+        const meta = await fetchTopicMeta(item.id);
+        if (item.likeCount === null) item.likeCount = meta.likes;
+        if (!item.author) item.author = { id: '', username: '匿名' };
+        if (!item.author.avatar && meta.avatarUrl) item.author.avatar = { url: meta.avatarUrl };
       }
     });
     await Promise.all(workers);

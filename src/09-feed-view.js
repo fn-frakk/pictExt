@@ -371,14 +371,21 @@
       return poolDone(this.pool);
     }
 
-    /** 搜索接口不返回点赞数，排「最多点赞」前先把有数的那批补上 */
+    /**
+     * 排「最多点赞」前把点赞数补上；另外，只要池子里有条目**缺头像**也会顺手补
+     * （候选池里缓存的老条目可能没存头像，卡片没头像很扎眼）。
+     */
     async enrichPool(token) {
-      if (this.sort.metric !== 'likeCount') return;
-      const need = this.pool.items.filter((i) => i.likeCount === null || i.likeCount === undefined);
-      if (!need.length) return;
-      this.setNote(`正在补齐点赞数…（候选池里 ${Math.min(need.length, ENRICH_MAX)} 条）`);
+      const missingAvatar = this.pool.items.filter((i) => !i.author?.avatar?.url);
+      const needLikes = this.pool.items.filter((i) => i.likeCount === null || i.likeCount === undefined);
+      if (this.sort.metric !== 'likeCount' && !missingAvatar.length) return;
+      if (!needLikes.length && !missingAvatar.length) return;
+      this.setNote(`正在补齐点赞数 / 头像…（候选池里 ${Math.min(needLikes.length + missingAvatar.length, ENRICH_MAX)} 条）`);
       await enrichLikes(this.pool.items, ENRICH_MAX);
       if (token !== this.token) return;
+      // 补完要重画一次：否则卡片还是补之前的旧 DOM（头像补不上来）
+      const shown = Math.min(this.poolVisible || this.chunk(), this.pool.items.length);
+      this.syncList(this.pool.items.slice(0, shown), true);
     }
 
     /** 按当前指标挑出能参与排序的条目（没这项数据的排除，绝不拿 0 充数） */

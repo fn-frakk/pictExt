@@ -29,7 +29,7 @@
     commentPageSize: 10,      // 评论每页楼层数（1-20）
     showStats: false,         // 首页「PICKCAT 数据统计」卡片（默认关，独立懒加载，不碰 feed）
     superSearch: true,       // Super 搜索：严格关键词搜索 + 本地候选池（默认开）
-    superPoolPages: 8,       // Super 候选池：每次同步翻几页主题（1-30，每页 50）
+    superPoolPages: 8,       // Super 候选池：每次同步翻几页主题（1-101，101 = 无限制，每页 50）
   };
 
   /** 把数字设置夹回合法区间，坏存档 / 手输都不至于把请求打爆 */
@@ -53,7 +53,7 @@
       merged.poolHotPages = clampInt(merged.poolHotPages, 1, 100, 3);
       merged.poolRenderChunk = clampInt(merged.poolRenderChunk, RENDER_CHUNK_MIN, RENDER_CHUNK_MAX, RENDER_CHUNK);
       merged.commentPageSize = clampInt(merged.commentPageSize, 1, 20, 10);
-      merged.superPoolPages = clampInt(merged.superPoolPages, 1, 30, 8);
+      merged.superPoolPages = clampInt(merged.superPoolPages, 1, 101, 8);
       return merged;
     } catch {
       return { ...DEFAULT_SETTINGS };
