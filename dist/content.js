@@ -1,6 +1,15 @@
 /**
- * pictExt / v1.10.1
+ * pictExt / v1.10.2
  * ---------------------------------------------------------------
+ * 【v1.10.2 变更】
+ * - 修「鼠标悬停在搜索结果上一直在闪」：
+ *   · Super 面板（#pictExt-super）没被算进「扩展自己的节点」白名单 → 它重绘结果列表
+ *     被当成外部 DOM 变化 → 又触发 mount → 无限重画。现在补进白名单。
+ *   · 结果列表加了「内容指纹」：关键词/筛选/排序/池子规模没变就不重画，
+ *     不再把鼠标底下的卡片换掉；同步进度只刷状态行，同步结束才整体重画一次。
+ *   · 面板已经在正确位置时不再反复移动节点（移动会打断悬停）。
+ * ---------------------------------------------------------------
+ * 【v1.10.1 变更】
  * 【v1.10.1 变更】
  * - Super 搜索结果改用**站点卡片结构**渲染（复用 08-cards 的 cardHTML），跟首页帖子
  *   同一套外观；只在前面加一个「帖子」/「回复 · 第 N 楼」标签，命中关键词高亮。
@@ -4254,7 +4263,15 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     replies: {},       // id -> 回复记录
   };
 
-  const superState = { scope: 'all', sort: 'relevance', mode: 'strict', host: null, mounted: false, urlQ: '' };
+  const superState = {
+    scope: 'all',
+    sort: 'relevance',
+    mode: 'strict',
+    host: null,
+    mounted: false,
+    urlQ: '',
+    renderSig: '', // 上次渲染的「内容指纹」，用来避免无意义的重画
+  };
   let superPoolLoaded = false;
   let superSyncing = false;
   let superSyncError = '';
@@ -4970,11 +4987,29 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     return bits.join(' · ');
   }
 
-  function renderSuperResults() {
+  function renderSuperResults(force) {
     const host = superState.host;
     if (!host) return;
     const q = new URLSearchParams(location.search).get('q') || '';
     const res = searchSuperPool(q, { scope: superState.scope, sort: superState.sort, mode: superState.mode });
+    // 内容没变就别重画：重画会把鼠标底下的卡片换掉，悬停时看起来一直在闪
+    const sig = [
+      q,
+      superState.scope,
+      superState.sort,
+      superState.mode,
+      res.total,
+      res.items.length,
+      res.watermark,
+      Object.keys(loadSuperPool().topics).length,
+      Object.keys(loadSuperPool().replies).length,
+    ].join('|');
+    if (!force && sig === superState.renderSig) {
+      const st = host.querySelector('[data-px-super-status]');
+      if (st) st.textContent = superStatusText(res);
+      return;
+    }
+    superState.renderSig = sig;
     const status = host.querySelector('[data-px-super-status]');
     const list = host.querySelector('[data-px-super-results]');
     const kw = host.querySelector('[data-px-super-keyword]');
@@ -5009,6 +5044,16 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
         return cardHTML(model, 'createdAt', shell, 'search');
       })
       .join('');
+  }
+
+  /** 只更新状态行，不动结果列表（同步进度刷新时用，避免把鼠标底下的卡片换掉） */
+  function updateSuperStatus(host) {
+    if (!host) return;
+    const st = host.querySelector('[data-px-super-status]');
+    if (!st) return;
+    const q = new URLSearchParams(location.search).get('q') || '';
+    const res = searchSuperPool(q, { scope: superState.scope, sort: superState.sort, mode: superState.mode });
+    st.textContent = superStatusText(res);
   }
 
   function superBind(host) {
@@ -5058,11 +5103,16 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       const kw = host.querySelector('[data-px-super-keyword]');
       if (kw) kw.textContent = q || '（在站内搜索框输入）';
     }
-    if (anchor.parentElement) anchor.parentElement.insertBefore(host, anchor);
-    else anchor.insertAdjacentElement('beforebegin', host);
+    // 已经在正确位置就别再挪 —— 移动节点会打断鼠标悬停（看起来就是卡片在闪）
+    const inPlace = host.isConnected && host.nextElementSibling === anchor && host.parentElement === anchor.parentElement;
+    if (!inPlace) {
+      if (anchor.parentElement) anchor.parentElement.insertBefore(host, anchor);
+      else anchor.insertAdjacentElement('beforebegin', host);
+    }
     superState.host = host;
     superState.mounted = true;
     superBind(host);
+    // 不强制重画：内容没变就别动 DOM（强制重画会把鼠标底下的卡片换掉 → 悬停时闪烁）
     renderSuperResults();
 
     // 候选池自动更新：进面板就同步一次（增量），失效条目同步清掉
@@ -5077,12 +5127,13 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
             ? `已同步 ${st.pages} 页 · 新增 ${st.topics} 帖 / ${st.replies} 回复 · 清理失效 ${st.removed} 条`
             : `正在同步候选池…（${st.pages} 页）`;
           superState.host = host;
-          renderSuperResults();
+          updateSuperStatus(host); // 只刷状态行，别重画列表
         },
       }).then(() => {
+        // 同步结束再整体重画一次（同步过程中只刷状态行，不动列表 → 鼠标底下的卡片不会被换掉）
         superStatus = '';
         superState.host = host;
-        renderSuperResults();
+        renderSuperResults(true);
       });
     }
     return true;
@@ -5095,6 +5146,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       superState.mounted = false;
       superState.host = null;
       superState.urlQ = '';
+      superState.renderSig = '';
     }
   }
 
@@ -5257,7 +5309,15 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   function isOwnNode(n) {
     const el = n.nodeType === 1 ? n : n.parentElement;
     if (!el || !el.closest) return false;
-    return !!el.closest('#' + PANEL_ID) || !!el.closest('[data-px="1"]') || el.id === 'pictExt-style';
+    // 注意：Super 搜索面板（#pictExt-super）也必须算「自己的节点」——
+    // 否则它重绘结果列表会被当成外部 DOM 变化 → 又触发 mount → 无限重画，
+    // 表现为鼠标悬停时卡片一直闪。
+    return (
+      !!el.closest('#' + PANEL_ID) ||
+      !!el.closest('#' + SUPER_ID) ||
+      !!el.closest('[data-px="1"]') ||
+      el.id === 'pictExt-style'
+    );
   }
 
   function startObserver() {
@@ -5677,7 +5737,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     scheduleMount();
     scheduleReplyToolbar();
     console.info(
-      '%cpictExt%c v1.10.1 扩展已加载 · 只读 · Cookie 仅在本页内存驻留，离开即清除',
+      '%cpictExt%c v1.10.2 扩展已加载 · 只读 · Cookie 仅在本页内存驻留，离开即清除',
       'background:#3b82f6;color:#fff;border-radius:3px;padding:1px 5px;font-weight:700',
       'color:#6b7280'
     );

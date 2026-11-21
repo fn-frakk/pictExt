@@ -1198,7 +1198,7 @@ async function runSuperSearch() {
   const { doc, calls, window } = boot(SEARCH_HTML, 'http://localhost/search?q=帖子', {
     settings: { superSearch: true },
   });
-  await sleep(1500); // 面板会自动同步候选池
+  await sleep(3000); // 面板会自动同步候选池（等同步跑完，池子规模不再变化）
 
   const panel = doc.getElementById('pictExt-super');
   ok(!!panel, '搜索页出现 Super 搜索面板');
@@ -1277,6 +1277,17 @@ async function runSuperSearch() {
   const replyBadge = replyItems[0]?.querySelector('.px-kind');
   ok(replyBadge && /回复 · 第 \d+ 楼/.test(replyBadge.textContent), '回复结果标「回复 · 第 N 楼」', replyBadge && replyBadge.textContent);
   ok(!!replyItems[0]?.querySelector('mark.px-mark'), '命中关键词高亮');
+
+  // 5.5) 悬停不闪：重绘不能把鼠标底下的卡片换掉（内容没变就不重画）
+  panel.querySelector('[data-px-super-scope="all"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await sleep(150);
+  await goto('帖子标题');
+  await sleep(300);
+  const firstCard = items()[0];
+  ok(!!firstCard, '有结果卡');
+  await sleep(1500); // 让 observer / 定时器有机会触发若干轮
+  const stillThere = items()[0] === firstCard;
+  ok(stillThere, '内容没变时结果卡不会被重建（悬停不闪）', stillThere ? '同一个节点' : '节点被换掉了');
 
   // 6) 自动清理失效：被删的帖子不会留在池子里
   const withGone = boot(SEARCH_HTML, 'http://localhost/search?q=帖子', {

@@ -153,7 +153,15 @@
   function isOwnNode(n) {
     const el = n.nodeType === 1 ? n : n.parentElement;
     if (!el || !el.closest) return false;
-    return !!el.closest('#' + PANEL_ID) || !!el.closest('[data-px="1"]') || el.id === 'pictExt-style';
+    // 注意：Super 搜索面板（#pictExt-super）也必须算「自己的节点」——
+    // 否则它重绘结果列表会被当成外部 DOM 变化 → 又触发 mount → 无限重画，
+    // 表现为鼠标悬停时卡片一直闪。
+    return (
+      !!el.closest('#' + PANEL_ID) ||
+      !!el.closest('#' + SUPER_ID) ||
+      !!el.closest('[data-px="1"]') ||
+      el.id === 'pictExt-style'
+    );
   }
 
   function startObserver() {

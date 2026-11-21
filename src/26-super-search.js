@@ -37,7 +37,15 @@
     replies: {},       // id -> 回复记录
   };
 
-  const superState = { scope: 'all', sort: 'relevance', mode: 'strict', host: null, mounted: false, urlQ: '' };
+  const superState = {
+    scope: 'all',
+    sort: 'relevance',
+    mode: 'strict',
+    host: null,
+    mounted: false,
+    urlQ: '',
+    renderSig: '', // 上次渲染的「内容指纹」，用来避免无意义的重画
+  };
   let superPoolLoaded = false;
   let superSyncing = false;
   let superSyncError = '';
@@ -753,11 +761,29 @@
     return bits.join(' · ');
   }
 
-  function renderSuperResults() {
+  function renderSuperResults(force) {
     const host = superState.host;
     if (!host) return;
     const q = new URLSearchParams(location.search).get('q') || '';
     const res = searchSuperPool(q, { scope: superState.scope, sort: superState.sort, mode: superState.mode });
+    // 内容没变就别重画：重画会把鼠标底下的卡片换掉，悬停时看起来一直在闪
+    const sig = [
+      q,
+      superState.scope,
+      superState.sort,
+      superState.mode,
+      res.total,
+      res.items.length,
+      res.watermark,
+      Object.keys(loadSuperPool().topics).length,
+      Object.keys(loadSuperPool().replies).length,
+    ].join('|');
+    if (!force && sig === superState.renderSig) {
+      const st = host.querySelector('[data-px-super-status]');
+      if (st) st.textContent = superStatusText(res);
+      return;
+    }
+    superState.renderSig = sig;
     const status = host.querySelector('[data-px-super-status]');
     const list = host.querySelector('[data-px-super-results]');
     const kw = host.querySelector('[data-px-super-keyword]');
@@ -792,6 +818,16 @@
         return cardHTML(model, 'createdAt', shell, 'search');
       })
       .join('');
+  }
+
+  /** 只更新状态行，不动结果列表（同步进度刷新时用，避免把鼠标底下的卡片换掉） */
+  function updateSuperStatus(host) {
+    if (!host) return;
+    const st = host.querySelector('[data-px-super-status]');
+    if (!st) return;
+    const q = new URLSearchParams(location.search).get('q') || '';
+    const res = searchSuperPool(q, { scope: superState.scope, sort: superState.sort, mode: superState.mode });
+    st.textContent = superStatusText(res);
   }
 
   function superBind(host) {
@@ -841,11 +877,16 @@
       const kw = host.querySelector('[data-px-super-keyword]');
       if (kw) kw.textContent = q || '（在站内搜索框输入）';
     }
-    if (anchor.parentElement) anchor.parentElement.insertBefore(host, anchor);
-    else anchor.insertAdjacentElement('beforebegin', host);
+    // 已经在正确位置就别再挪 —— 移动节点会打断鼠标悬停（看起来就是卡片在闪）
+    const inPlace = host.isConnected && host.nextElementSibling === anchor && host.parentElement === anchor.parentElement;
+    if (!inPlace) {
+      if (anchor.parentElement) anchor.parentElement.insertBefore(host, anchor);
+      else anchor.insertAdjacentElement('beforebegin', host);
+    }
     superState.host = host;
     superState.mounted = true;
     superBind(host);
+    // 不强制重画：内容没变就别动 DOM（强制重画会把鼠标底下的卡片换掉 → 悬停时闪烁）
     renderSuperResults();
 
     // 候选池自动更新：进面板就同步一次（增量），失效条目同步清掉
@@ -860,12 +901,13 @@
             ? `已同步 ${st.pages} 页 · 新增 ${st.topics} 帖 / ${st.replies} 回复 · 清理失效 ${st.removed} 条`
             : `正在同步候选池…（${st.pages} 页）`;
           superState.host = host;
-          renderSuperResults();
+          updateSuperStatus(host); // 只刷状态行，别重画列表
         },
       }).then(() => {
+        // 同步结束再整体重画一次（同步过程中只刷状态行，不动列表 → 鼠标底下的卡片不会被换掉）
         superStatus = '';
         superState.host = host;
-        renderSuperResults();
+        renderSuperResults(true);
       });
     }
     return true;
@@ -878,6 +920,7 @@
       superState.mounted = false;
       superState.host = null;
       superState.urlQ = '';
+      superState.renderSig = '';
     }
   }
 
