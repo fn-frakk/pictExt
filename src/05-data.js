@@ -422,6 +422,14 @@
       return state;
     }
     const state = newPoolState(plan);
+    // 先把 Super 候选池里已经缓存的主题白捡进来（本地已有，不用再翻接口）
+    // —— 首页 / 板块页的排序池因此能立刻有内容，接口只负责补新的。
+    try {
+      const cached = superCachedTopics();
+      if (cached.length) addItems(state, cached);
+    } catch {
+      /* 池子读不出来就当没有 */
+    }
     await runChains(ctx, state, null, null, hooks);
     poolCache.set(key, { at: Date.now(), state: clonePool(state) });
     while (poolCache.size > POOL_CACHE_MAX) poolCache.delete(poolCache.keys().next().value);

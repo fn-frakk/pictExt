@@ -178,6 +178,29 @@
       let page;
       try {
         page = await fetchFeedPage(scope, st.cursor);
+        // 关注流常常只回一两条（站点那边就是按「你关注的人的新帖」给的），
+        // 这里自动续着翻几页，直到攒够一屏或没有下一页 —— 免得开出来就一条。
+        if (scope === 'following' && page.items.length && page.items.length < 10 && page.next) {
+          let cursor = page.next;
+          const extra = [];
+          for (let i = 0; i < 4 && cursor; i++) {
+            let more;
+            try {
+              more = await fetchFeedPage(scope, cursor);
+            } catch {
+              break; // 游标过期之类 → 就用已经拿到的
+            }
+            if (!more.items.length) break;
+            extra.push(...more.items);
+            cursor = more.next;
+            if (extra.length >= 20) break;
+          }
+          if (extra.length) {
+            const seenIds = new Set(page.items.map((i) => i.id));
+            page.items = page.items.concat(extra.filter((i) => !seenIds.has(i.id)));
+            page.next = cursor;
+          }
+        }
       } catch (err) {
         if (!isMore) throw err; // 第一页就失败 → 交给上层显示错误
         if (token !== this.token) return;

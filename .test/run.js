@@ -436,7 +436,7 @@ const SETTINGS_HTML = `<!doctype html><html><head></head><body>
   </div>
 </main></div></body></html>`;
 
-function boot(html, url, { settings, detail, loggedIn, cookie, poolPages, timePool, superGone } = {}) {
+function boot(html, url, { settings, detail, loggedIn, cookie, poolPages, timePool, superGone, superPool } = {}) {
   const calls = [];
   const dom = new JSDOM(html, {
     url,
@@ -445,6 +445,7 @@ function boot(html, url, { settings, detail, loggedIn, cookie, poolPages, timePo
     beforeParse(window) {
       installFetch(window, calls, detail, { loggedIn, poolPages, timePool, superGone });
       if (settings) window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      if (superPool) window.localStorage.setItem('pictExt:superpool:v1', JSON.stringify(superPool));
       if (cookie) {
         try {
           Object.defineProperty(window.document, 'cookie', { get: () => cookie, configurable: true });
@@ -1288,6 +1289,68 @@ async function runSuperSearch() {
   await sleep(1500); // 让 observer / 定时器有机会触发若干轮
   const stillThere = items()[0] === firstCard;
   ok(stillThere, '内容没变时结果卡不会被重建（悬停不闪）', stillThere ? '同一个节点' : '节点被换掉了');
+
+  // 5.6) 按钮一点就中（pointerdown 委托，站点重渲染也不失效）
+  const modeChip = panel.querySelector('[data-px-super-mode="loose"]');
+  // jsdom 没有 PointerEvent，用 MouseEvent 带上 pointerdown 类型即可（监听按类型名注册）
+  modeChip.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+  await sleep(200);
+  ok(panel.querySelector('[data-px-super-mode="loose"]').dataset.active === 'true', 'pointerdown 一次就切到「宽松匹配」');
+
+  // 5.7) 候选池深度改了 → 立刻按新深度刷新
+  const set = boot(SETTINGS_HTML, 'http://localhost/settings', { settings: { superSearch: true } });
+  await sleep(600);
+  set.doc.querySelector('[data-px-settings-nav]').dispatchEvent(new set.window.MouseEvent('click', { bubbles: true }));
+  await sleep(400);
+  const depthInput = set.doc.querySelector('input[data-px-set="superPoolPages"]');
+  ok(!!depthInput, '设置里有「候选池深度」');
+  const topicsBefore = set.calls.filter((c) => new URL(c.url).pathname === '/api/v1/topics').length;
+  depthInput.value = '20';
+  depthInput.dispatchEvent(new set.window.Event('change', { bubbles: true }));
+  await sleep(1200);
+  const topicsAfter = set.calls.filter((c) => new URL(c.url).pathname === '/api/v1/topics').length;
+  ok(topicsAfter > topicsBefore, '改深度后立刻刷新候选池（发起了新的拉取）', topicsBefore + ' → ' + topicsAfter);
+
+  // 5.8) 关注流只有一两条时自动续拉，别只给一条
+  const home = boot(HOME_HTML, 'http://localhost/', { settings: { sortMode: 'replace' }, loggedIn: true });
+  await sleep(700);
+  home.doc.querySelector('[data-sort="following"]').dispatchEvent(new home.window.MouseEvent('click', { bubbles: true }));
+  await sleep(1200);
+  const feedCards = home.doc.querySelectorAll('#pictExt-panel .px-list > article').length;
+  ok(feedCards >= 7, '关注流自动续拉，不再只给 1 条', String(feedCards));
+
+  // 5.9) Super 候选池的缓存，别的排序池也能白捡
+  const cachedPool = {
+    v: 1,
+    watermark: Date.parse('2026-11-20T00:00:00.000Z'),
+    updatedAt: Date.now(),
+    topics: {
+      'cached-1': {
+        id: 'cached-1',
+        title: '缓存帖甲',
+        text: '来自 Super 候选池的正文',
+        authorId: 'u9',
+        authorName: '缓存用户',
+        replyCount: 7,
+        viewCount: 70,
+        likeCount: 3,
+        bookmarkCount: 1,
+        tags: [],
+        createdAt: '2026-11-19T10:00:00.000Z',
+        lastActivityAt: '2026-11-19T12:00:00.000Z',
+        _t: Date.parse('2026-11-19T10:00:00.000Z'),
+        _a: Date.parse('2026-11-19T12:00:00.000Z'),
+      },
+    },
+    replies: {},
+  };
+  const reuse = boot(HOME_HTML, 'http://localhost/', {
+    settings: { sortMode: 'replace' },
+    superPool: cachedPool,
+  });
+  await sleep(1200);
+  const titles = [...reuse.doc.querySelectorAll('#pictExt-panel .px-list h2')].map((h) => h.textContent.trim());
+  ok(titles.some((t) => t.includes('缓存帖甲')), '排序候选池直接用上 Super 候选池的缓存', titles.slice(0, 5).join(' | '));
 
   // 6) 自动清理失效：被删的帖子不会留在池子里
   const withGone = boot(SEARCH_HTML, 'http://localhost/search?q=帖子', {

@@ -197,7 +197,7 @@
       type: 'switch',
       label: 'Super 搜索（严格匹配）',
       desc:
-        '把站内那套模糊搜索换掉：搜索页直接显示 Super 面板（任何页面按 Ctrl/⌘+K 也能唤出）。所有关键词都要命中才算结果，支持「精确短语」、-排除、title: / author: 限定；结果来自本地候选池，按时间水位线增量拉取，帖子或回复被删会自动从池里剔除。',
+        '把站内那套模糊搜索换掉：搜索页直接显示 Super 面板。关键词用站点的搜索框输入，面板用本地候选池做严格/宽松匹配（可切），支持「精确短语」、-排除、title: / author: 限定；候选池按时间水位线增量拉取，帖子或回复被删会自动从池里剔除，同一个池子也供给首页/板块页的排序用。',
     },
   ];
 
@@ -414,11 +414,14 @@
       if (num) {
         const row = SETTINGS_ROWS.find((r) => r.key === num.dataset.pxSet);
         const key = num.dataset.pxSet;
+        const prev = settings[key];
         if (row) {
           settings[key] = clampInt(num.value, row.min, row.max, settings[key]);
           num.value = String(settings[key]);
         }
         applySettings();
+        // 候选池深度改了 → 立刻按新深度深挖刷新（不然改了没反应）
+        if (key === 'superPoolPages' && settings[key] !== prev) refreshSuperPoolNow();
         return;
       }
       const sel = e.target.closest('select[data-px-set]');

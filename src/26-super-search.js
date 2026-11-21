@@ -242,6 +242,9 @@
       if (options.onProgress) options.onProgress({ ...st });
     };
     try {
+      // deep=true：无视水位线截断，翻满设定页数（把更老的历史主题也收进池子）
+      // —— 设置里改「候选池深度」后要的就是这个。
+      const deep = !!options.deep;
       const wm = options.force ? 0 : pool.watermark || 0;
       const touched = new Map(); // topicId -> 主题记录（有新活动，需要补回复）
       let cursor = null;
@@ -277,8 +280,8 @@
         report();
         cursor = data.pageInfo && data.pageInfo.nextCursor ? data.pageInfo.nextCursor : null;
         if (!cursor) break;
-        // 整页都是旧内容 → 后面不会再有新的了
-        if (!newer) {
+        // 整页都是旧内容 → 后面不会再有新的了（deep 模式不截断，继续往历史里翻）
+        if (!newer && !deep) {
           cursor = null;
           break;
         }
@@ -830,32 +833,10 @@
     st.textContent = superStatusText(res);
   }
 
+  /** 只做一次性的标记绑定；真正的点击走 document 级委托（40-events.js） */
   function superBind(host) {
     if (!host || host.dataset.pxBound === '1') return;
     host.dataset.pxBound = '1';
-
-    host.addEventListener('click', (e) => {
-      const scopeBtn = e.target.closest('[data-px-super-scope]');
-      if (scopeBtn) {
-        superState.scope = scopeBtn.dataset.pxSuperScope;
-        saveSuperUI();
-        renderSuperResults();
-        return;
-      }
-      const modeBtn = e.target.closest('[data-px-super-mode]');
-      if (modeBtn) {
-        superState.mode = modeBtn.dataset.pxSuperMode;
-        saveSuperUI();
-        renderSuperResults();
-        return;
-      }
-      const sortBtn = e.target.closest('[data-px-super-sort]');
-      if (sortBtn) {
-        superState.sort = sortBtn.dataset.pxSuperSort;
-        saveSuperUI();
-        renderSuperResults();
-      }
-    });
   }
 
   /** 搜索页接管：把站内结果区换成 Super 搜索面板 */
@@ -922,6 +903,59 @@
       superState.urlQ = '';
       superState.renderSig = '';
     }
+  }
+
+  /**
+   * 设置里改「候选池深度」后立刻生效：深挖一轮，把更老的历史主题也收进池子。
+   * （普通同步是增量的，只收水位线之后的新内容；深挖才会往历史里翻。）
+   */
+  function refreshSuperPoolNow(opts) {
+    const options = opts || {};
+    const host = superState.host;
+    superStatus = '正在按新深度刷新候选池…';
+    if (host) updateSuperStatus(host);
+    return syncSuperPool({
+      deep: true,
+      onProgress: (st) => {
+        superStatus = st.done
+          ? `已刷新 ${st.pages} 页 · 新增 ${st.topics} 帖 / ${st.replies} 回复 · 清理失效 ${st.removed} 条`
+          : `正在按新深度刷新候选池…（${st.pages} 页）`;
+        superState.host = host;
+        if (host) updateSuperStatus(host);
+      },
+    }).then((st) => {
+      superStatus = '';
+      superState.host = host;
+      renderSuperResults(true);
+      return st;
+    });
+  }
+
+  /**
+   * 把 Super 候选池里已经缓存好的主题，转换成排序候选池能直接用的条目。
+   * 首页 / 板块页的排序池（最新 / 最早 / 最多浏览…）可以白捡这些数据：
+   * 本地已经有了，就不用再翻一次接口。
+   */
+  function superCachedTopics() {
+    const pool = loadSuperPool();
+    return Object.values(pool.topics).map((rec) => ({
+      id: rec.id,
+      title: rec.title,
+      excerpt: rec.text,
+      author: { id: rec.authorId, username: rec.authorName },
+      replyCount: rec.replyCount,
+      viewCount: rec.viewCount,
+      likeCount: rec.likeCount,
+      bookmarkCount: rec.bookmarkCount,
+      createdAt: rec.createdAt,
+      editedAt: null,
+      lastActivityAt: rec.lastActivityAt,
+      tags: (rec.tags || []).map((slug) => ({ slug, name: slug })),
+      pinned: false,
+      kind: rec.kind,
+      _t: rec._t,
+      _a: rec._a,
+    }));
   }
 
   function initSuperSearch() {

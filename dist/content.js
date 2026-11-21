@@ -1,6 +1,17 @@
 /**
- * pictExt / v1.10.2
+ * pictExt / v1.10.3
  * ---------------------------------------------------------------
+ * 【v1.10.3 变更】
+ * - Super 面板的按钮（范围 / 匹配方式 / 排序）改走 document 级 pointerdown 委托，
+ *   跟扩展其它按钮一致：站点重渲染把按钮换掉也不失效，**按一下就中**，不用点好几次。
+ * - 设置里改「Super 候选池深度」后**立刻按新深度深挖刷新**候选池（deep 模式：
+ *   无视水位线截断，翻满设定页数，把更老的历史主题也收进池子）。
+ * - 首页「关注」流：站点常常只回一两条，现在会自动续着翻几页，攒够一屏再显示
+ *   （不再开出来只有 1 条）。
+ * - **候选池复用**：Super 候选池里已经缓存好的主题，会直接白捡进首页 / 板块页的
+ *   排序候选池（最新 / 最早 / 最多浏览…），本地已有的数据不用再翻一次接口。
+ * ---------------------------------------------------------------
+ * 【v1.10.2 变更】
  * 【v1.10.2 变更】
  * - 修「鼠标悬停在搜索结果上一直在闪」：
  *   · Super 面板（#pictExt-super）没被算进「扩展自己的节点」白名单 → 它重绘结果列表
@@ -24,7 +35,7 @@
  * 【v1.10.0 变更】
  * - 新增「Super 搜索」：把站内那套模糊搜索换掉（站内 /topics?q= 是相关度匹配，
  *   搜 pick 出 29 条、搜 pickcat 出 500 条，越搜越糊）。搜索页直接接管成
- *   Super 面板，任何页面按 Ctrl/⌘+K 也能唤出。
+ *   Super 面板（关键词走站点的搜索框，URL 上的 q）。
  * - 严格关键词匹配：所有词都要命中（AND），支持 "精确短语" / -排除 /
  *   title: / author: / in:topic / in:reply；结果按相关度 / 最新 / 最多回复排。
  * - 本地候选池：主题 + 回复缓存在本机，按时间水位线增量拉取 —— 本次已加载到
@@ -813,6 +824,14 @@
       return state;
     }
     const state = newPoolState(plan);
+    // 先把 Super 候选池里已经缓存的主题白捡进来（本地已有，不用再翻接口）
+    // —— 首页 / 板块页的排序池因此能立刻有内容，接口只负责补新的。
+    try {
+      const cached = superCachedTopics();
+      if (cached.length) addItems(state, cached);
+    } catch {
+      /* 池子读不出来就当没有 */
+    }
     await runChains(ctx, state, null, null, hooks);
     poolCache.set(key, { at: Date.now(), state: clonePool(state) });
     while (poolCache.size > POOL_CACHE_MAX) poolCache.delete(poolCache.keys().next().value);
@@ -1587,6 +1606,29 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       let page;
       try {
         page = await fetchFeedPage(scope, st.cursor);
+        // 关注流常常只回一两条（站点那边就是按「你关注的人的新帖」给的），
+        // 这里自动续着翻几页，直到攒够一屏或没有下一页 —— 免得开出来就一条。
+        if (scope === 'following' && page.items.length && page.items.length < 10 && page.next) {
+          let cursor = page.next;
+          const extra = [];
+          for (let i = 0; i < 4 && cursor; i++) {
+            let more;
+            try {
+              more = await fetchFeedPage(scope, cursor);
+            } catch {
+              break; // 游标过期之类 → 就用已经拿到的
+            }
+            if (!more.items.length) break;
+            extra.push(...more.items);
+            cursor = more.next;
+            if (extra.length >= 20) break;
+          }
+          if (extra.length) {
+            const seenIds = new Set(page.items.map((i) => i.id));
+            page.items = page.items.concat(extra.filter((i) => !seenIds.has(i.id)));
+            page.next = cursor;
+          }
+        }
       } catch (err) {
         if (!isMore) throw err; // 第一页就失败 → 交给上层显示错误
         if (token !== this.token) return;
@@ -3406,7 +3448,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       type: 'switch',
       label: 'Super 搜索（严格匹配）',
       desc:
-        '把站内那套模糊搜索换掉：搜索页直接显示 Super 面板（任何页面按 Ctrl/⌘+K 也能唤出）。所有关键词都要命中才算结果，支持「精确短语」、-排除、title: / author: 限定；结果来自本地候选池，按时间水位线增量拉取，帖子或回复被删会自动从池里剔除。',
+        '把站内那套模糊搜索换掉：搜索页直接显示 Super 面板。关键词用站点的搜索框输入，面板用本地候选池做严格/宽松匹配（可切），支持「精确短语」、-排除、title: / author: 限定；候选池按时间水位线增量拉取，帖子或回复被删会自动从池里剔除，同一个池子也供给首页/板块页的排序用。',
     },
   ];
 
@@ -3623,11 +3665,14 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       if (num) {
         const row = SETTINGS_ROWS.find((r) => r.key === num.dataset.pxSet);
         const key = num.dataset.pxSet;
+        const prev = settings[key];
         if (row) {
           settings[key] = clampInt(num.value, row.min, row.max, settings[key]);
           num.value = String(settings[key]);
         }
         applySettings();
+        // 候选池深度改了 → 立刻按新深度深挖刷新（不然改了没反应）
+        if (key === 'superPoolPages' && settings[key] !== prev) refreshSuperPoolNow();
         return;
       }
       const sel = e.target.closest('select[data-px-set]');
@@ -4468,6 +4513,9 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       if (options.onProgress) options.onProgress({ ...st });
     };
     try {
+      // deep=true：无视水位线截断，翻满设定页数（把更老的历史主题也收进池子）
+      // —— 设置里改「候选池深度」后要的就是这个。
+      const deep = !!options.deep;
       const wm = options.force ? 0 : pool.watermark || 0;
       const touched = new Map(); // topicId -> 主题记录（有新活动，需要补回复）
       let cursor = null;
@@ -4503,8 +4551,8 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
         report();
         cursor = data.pageInfo && data.pageInfo.nextCursor ? data.pageInfo.nextCursor : null;
         if (!cursor) break;
-        // 整页都是旧内容 → 后面不会再有新的了
-        if (!newer) {
+        // 整页都是旧内容 → 后面不会再有新的了（deep 模式不截断，继续往历史里翻）
+        if (!newer && !deep) {
           cursor = null;
           break;
         }
@@ -5056,32 +5104,10 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     st.textContent = superStatusText(res);
   }
 
+  /** 只做一次性的标记绑定；真正的点击走 document 级委托（40-events.js） */
   function superBind(host) {
     if (!host || host.dataset.pxBound === '1') return;
     host.dataset.pxBound = '1';
-
-    host.addEventListener('click', (e) => {
-      const scopeBtn = e.target.closest('[data-px-super-scope]');
-      if (scopeBtn) {
-        superState.scope = scopeBtn.dataset.pxSuperScope;
-        saveSuperUI();
-        renderSuperResults();
-        return;
-      }
-      const modeBtn = e.target.closest('[data-px-super-mode]');
-      if (modeBtn) {
-        superState.mode = modeBtn.dataset.pxSuperMode;
-        saveSuperUI();
-        renderSuperResults();
-        return;
-      }
-      const sortBtn = e.target.closest('[data-px-super-sort]');
-      if (sortBtn) {
-        superState.sort = sortBtn.dataset.pxSuperSort;
-        saveSuperUI();
-        renderSuperResults();
-      }
-    });
   }
 
   /** 搜索页接管：把站内结果区换成 Super 搜索面板 */
@@ -5148,6 +5174,59 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       superState.urlQ = '';
       superState.renderSig = '';
     }
+  }
+
+  /**
+   * 设置里改「候选池深度」后立刻生效：深挖一轮，把更老的历史主题也收进池子。
+   * （普通同步是增量的，只收水位线之后的新内容；深挖才会往历史里翻。）
+   */
+  function refreshSuperPoolNow(opts) {
+    const options = opts || {};
+    const host = superState.host;
+    superStatus = '正在按新深度刷新候选池…';
+    if (host) updateSuperStatus(host);
+    return syncSuperPool({
+      deep: true,
+      onProgress: (st) => {
+        superStatus = st.done
+          ? `已刷新 ${st.pages} 页 · 新增 ${st.topics} 帖 / ${st.replies} 回复 · 清理失效 ${st.removed} 条`
+          : `正在按新深度刷新候选池…（${st.pages} 页）`;
+        superState.host = host;
+        if (host) updateSuperStatus(host);
+      },
+    }).then((st) => {
+      superStatus = '';
+      superState.host = host;
+      renderSuperResults(true);
+      return st;
+    });
+  }
+
+  /**
+   * 把 Super 候选池里已经缓存好的主题，转换成排序候选池能直接用的条目。
+   * 首页 / 板块页的排序池（最新 / 最早 / 最多浏览…）可以白捡这些数据：
+   * 本地已经有了，就不用再翻一次接口。
+   */
+  function superCachedTopics() {
+    const pool = loadSuperPool();
+    return Object.values(pool.topics).map((rec) => ({
+      id: rec.id,
+      title: rec.title,
+      excerpt: rec.text,
+      author: { id: rec.authorId, username: rec.authorName },
+      replyCount: rec.replyCount,
+      viewCount: rec.viewCount,
+      likeCount: rec.likeCount,
+      bookmarkCount: rec.bookmarkCount,
+      createdAt: rec.createdAt,
+      editedAt: null,
+      lastActivityAt: rec.lastActivityAt,
+      tags: (rec.tags || []).map((slug) => ({ slug, name: slug })),
+      pinned: false,
+      kind: rec.kind,
+      _t: rec._t,
+      _a: rec._a,
+    }));
   }
 
   function initSuperSearch() {
@@ -5654,6 +5733,20 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       return true;
     }
 
+    // Super 搜索：范围 / 匹配方式 / 排序
+    // 走 document 级委托（和别的扩展按钮一样）：站点重渲染把按钮换掉也不影响，
+    // pointerdown 就响应，不会出现「要点好几次才生效」。
+    const ss = t.closest('[data-px-super-scope],[data-px-super-mode],[data-px-super-sort]');
+    if (ss) {
+      ev.preventDefault();
+      if (ss.dataset.pxSuperScope) superState.scope = ss.dataset.pxSuperScope;
+      if (ss.dataset.pxSuperMode) superState.mode = ss.dataset.pxSuperMode;
+      if (ss.dataset.pxSuperSort) superState.sort = ss.dataset.pxSuperSort;
+      saveSuperUI();
+      renderSuperResults(true);
+      return true;
+    }
+
     // 个人资料合集：排序
     const ps = t.closest('[data-px-profsort]');
     if (ps) {
@@ -5737,7 +5830,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     scheduleMount();
     scheduleReplyToolbar();
     console.info(
-      '%cpictExt%c v1.10.2 扩展已加载 · 只读 · Cookie 仅在本页内存驻留，离开即清除',
+      '%cpictExt%c v1.10.3 扩展已加载 · 只读 · Cookie 仅在本页内存驻留，离开即清除',
       'background:#3b82f6;color:#fff;border-radius:3px;padding:1px 5px;font-weight:700',
       'color:#6b7280'
     );

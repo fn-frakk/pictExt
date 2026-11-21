@@ -93,6 +93,20 @@
       return true;
     }
 
+    // Super 搜索：范围 / 匹配方式 / 排序
+    // 走 document 级委托（和别的扩展按钮一样）：站点重渲染把按钮换掉也不影响，
+    // pointerdown 就响应，不会出现「要点好几次才生效」。
+    const ss = t.closest('[data-px-super-scope],[data-px-super-mode],[data-px-super-sort]');
+    if (ss) {
+      ev.preventDefault();
+      if (ss.dataset.pxSuperScope) superState.scope = ss.dataset.pxSuperScope;
+      if (ss.dataset.pxSuperMode) superState.mode = ss.dataset.pxSuperMode;
+      if (ss.dataset.pxSuperSort) superState.sort = ss.dataset.pxSuperSort;
+      saveSuperUI();
+      renderSuperResults(true);
+      return true;
+    }
+
     // 个人资料合集：排序
     const ps = t.closest('[data-px-profsort]');
     if (ps) {
