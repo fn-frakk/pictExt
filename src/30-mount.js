@@ -40,6 +40,9 @@
   }
 
   function mount() {
+    // 离开搜索页：把 Super 搜索面板撤掉（它只属于搜索页）
+    if (!location.pathname.startsWith('/search')) unmountSuperSearch();
+
     // 帖子详情 / 作品详情：走折叠 / 信息补全
     if (detailScope()) {
       if (view) teardown();
@@ -74,6 +77,17 @@
     }
 
     const kind = adapter.kind;
+
+    // Super 搜索：接管搜索页 —— 站内的模糊搜索（pick 出 29 条、pickcat 出 500 条）太糊，
+    // 这里换成严格关键词搜索 + 本地候选池；排序改由面板自己的「相关度 / 最新 / 最多回复」负责。
+    if (kind === 'search' && settings.superSearch) {
+      if (view) teardown();
+      mountSuperSearch(mp.anchor);
+      nativeHider.hide(adapter.nativeNodes(mp.anchor));
+      return;
+    }
+    unmountSuperSearch();
+
     // 原版模式 = 插件完全不碰排序（默认）；只有「全部替换」才注入面板
     if (settings.sortMode !== 'replace') {
       if (document.getElementById(PANEL_ID)) teardown();

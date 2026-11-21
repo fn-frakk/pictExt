@@ -195,6 +195,118 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   font-family:inherit; font-size:12px; color:var(--ui-text-muted,#6b7280);
 }
 #pictExt-collection .pxcol-toggle:hover{ color:var(--ui-primary,#3b82f6); }
+
+/* ---------- Super 搜索（严格匹配 + 候选池） ---------- */
+.px-super{
+  --pxs-primary: var(--ui-primary,#3b82f6);
+  --pxs-text: var(--ui-text,#111827);
+  --pxs-muted: var(--ui-text-muted,#6b7280);
+  --pxs-dim: var(--ui-text-dimmed,#9ca3af);
+  --pxs-border: var(--ui-border,rgba(127,127,127,.24));
+  --pxs-card: var(--ui-card-translucent,rgba(127,127,127,.06));
+  margin:0 0 14px; color:var(--pxs-text); font-size:14px; line-height:1.55;
+}
+.px-super, .px-super *{ box-sizing:border-box; }
+.px-super-head{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:12px 14px; border-radius:12px 12px 0 0;
+  background:linear-gradient(120deg, color-mix(in srgb, var(--pxs-primary) 16%, transparent), transparent 62%), var(--pxs-card);
+  border:1px solid var(--pxs-border); border-bottom:0;
+}
+.px-super-brand{ display:flex; align-items:center; gap:7px; font-size:16px; font-weight:800; letter-spacing:.2px; }
+.px-super-logo{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:24px; height:24px; border-radius:8px; font-size:14px;
+  color:#fff; background:linear-gradient(135deg, var(--pxs-primary), #8b5cf6);
+  box-shadow:0 2px 10px color-mix(in srgb, var(--pxs-primary) 45%, transparent);
+}
+.px-super-sub{ font-size:12px; color:var(--pxs-muted); }
+.px-super-close{
+  margin-left:auto; appearance:none; border:0; cursor:pointer; background:transparent;
+  color:var(--pxs-dim); font-size:15px; line-height:1; padding:6px 8px; border-radius:8px;
+}
+.px-super-close:hover{ color:var(--pxs-text); background:color-mix(in srgb, var(--pxs-primary) 10%, transparent); }
+.px-super-searchbar{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:12px 14px; border:1px solid var(--pxs-border); background:var(--pxs-card); }
+.px-super-input{
+  flex:1 1 260px; min-width:0; height:38px; padding:0 12px;
+  border-radius:10px; border:1px solid var(--pxs-border);
+  background:var(--ui-bg,Canvas); color:var(--pxs-text); font:inherit; font-size:14px;
+  outline:none; transition:border-color .15s ease, box-shadow .15s ease;
+}
+.px-super-input:focus{
+  border-color:var(--pxs-primary);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--pxs-primary) 22%, transparent);
+}
+.px-super-btn{
+  appearance:none; cursor:pointer; font:inherit; font-size:13px; font-weight:600;
+  height:38px; padding:0 14px; border-radius:10px; border:1px solid transparent;
+  color:#fff; background:var(--pxs-primary);
+  transition:filter .15s ease, opacity .15s ease;
+}
+.px-super-btn:hover{ filter:brightness(1.06); }
+.px-super-btn:disabled{ opacity:.6; cursor:default; }
+.px-super-btn.ghost{ background:transparent; color:var(--pxs-text); border-color:var(--pxs-border); }
+.px-super-chips{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:10px 14px; border:1px solid var(--pxs-border); border-top:0; background:var(--pxs-card); }
+.px-super-chip{
+  appearance:none; cursor:pointer; font:inherit; font-size:12px; font-weight:600;
+  padding:4px 10px; border-radius:999px; border:1px solid var(--pxs-border);
+  background:transparent; color:var(--pxs-muted);
+}
+.px-super-chip:hover{ color:var(--pxs-text); border-color:var(--pxs-primary); }
+.px-super-chip[data-active="true"]{ color:#fff; background:var(--pxs-primary); border-color:transparent; }
+.px-super-sep{ width:1px; height:16px; background:var(--pxs-border); }
+.px-super-status{
+  padding:8px 14px; font-size:12px; color:var(--pxs-dim);
+  border:1px solid var(--pxs-border); border-top:0; background:var(--pxs-card);
+}
+.px-super-results{
+  display:flex; flex-direction:column; gap:8px;
+  padding:10px; border:1px solid var(--pxs-border); border-top:0;
+  border-radius:0 0 12px 12px; background:var(--pxs-card);
+}
+.px-super-empty{ padding:26px 12px; text-align:center; color:var(--pxs-dim); font-size:13px; }
+.px-super-item{
+  padding:11px 13px; border-radius:10px; border:1px solid transparent;
+  background:color-mix(in srgb, var(--ui-bg,Canvas) 82%, transparent);
+  transition:border-color .15s ease, transform .12s ease, box-shadow .15s ease;
+}
+.px-super-item:hover{
+  border-color:color-mix(in srgb, var(--pxs-primary) 45%, transparent);
+  transform:translateY(-1px);
+  box-shadow:0 6px 18px rgba(0,0,0,.08);
+}
+.px-super-item-head{ display:flex; align-items:baseline; gap:8px; min-width:0; }
+.px-super-badge{
+  flex:none; font-size:11px; font-weight:700; padding:1px 7px; border-radius:999px;
+  color:var(--pxs-primary); background:color-mix(in srgb, var(--pxs-primary) 12%, transparent);
+}
+.px-super-badge[data-kind="reply"]{ color:#8b5cf6; background:color-mix(in srgb, #8b5cf6 14%, transparent); }
+.px-super-title{ margin:0; min-width:0; font-size:15px; font-weight:700; line-height:1.4; }
+.px-super-title a{ color:inherit; text-decoration:none; }
+.px-super-title a:hover{ color:var(--pxs-primary); }
+.px-super-snip{ margin:4px 0 0; font-size:13px; color:var(--pxs-muted); line-height:1.5; }
+.px-super-meta{ display:flex; flex-wrap:wrap; gap:10px; margin-top:6px; font-size:11.5px; color:var(--pxs-dim); }
+.px-super-author{ font-weight:600; color:var(--pxs-muted); }
+.px-super-score{ margin-left:auto; font-variant-numeric:tabular-nums; }
+.px-super mark.px-mark{
+  background:color-mix(in srgb, var(--pxs-primary) 30%, transparent);
+  color:inherit; border-radius:3px; padding:0 1px;
+}
+/* Ctrl+K 浮层 */
+.px-super-overlay{
+  position:fixed; inset:0; z-index:2147483000;
+  display:none; align-items:flex-start; justify-content:center;
+  padding:8vh 16px 16px;
+  background:color-mix(in srgb, #000 45%, transparent);
+  backdrop-filter:blur(4px);
+}
+.px-super-overlay .px-super{
+  width:min(880px, 100%); max-height:82vh; overflow-y:auto; overscroll-behavior:contain;
+  border-radius:14px; border:1px solid var(--pxs-border);
+  background:var(--ui-bg,Canvas);
+  box-shadow:0 24px 60px rgba(0,0,0,.35);
+}
+.px-super-overlay .px-super-results{ background:transparent; }
 `;
 
   function injectStyle() {
