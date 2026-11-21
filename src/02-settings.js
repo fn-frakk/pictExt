@@ -22,8 +22,12 @@
     showPinned: true,         // 卡片显示置顶标记
     poolLatestPages: 6,       // 候选池：最新链翻几页（1-100）
     poolHotPages: 3,          // 候选池：热帖（推荐）链翻几页（1-100）
+    latestByCreated: true,    // 「最新」按发布时间（站内 sort=latest 其实是按活跃时间）
+    poolParallel: true,       // 深翻时按时间锚点切段并行拉（读不懂游标就自动退回串行）
+    poolRenderChunk: 20,      // 「再多看几条」一次多显示几条（10-100）
     commentPaging: true,      // 评论区按页显示（像 B 站那样）
     commentPageSize: 10,      // 评论每页楼层数（1-20）
+    showStats: false,         // 首页「PICKCAT 数据统计」卡片（默认关，独立懒加载，不碰 feed）
   };
 
   /** 把数字设置夹回合法区间，坏存档 / 手输都不至于把请求打爆 */
@@ -45,6 +49,7 @@
       if (!SORT_KEYS.has(merged.defaultSort)) merged.defaultSort = 'latest';
       merged.poolLatestPages = clampInt(merged.poolLatestPages, 1, 100, 6);
       merged.poolHotPages = clampInt(merged.poolHotPages, 1, 100, 3);
+      merged.poolRenderChunk = clampInt(merged.poolRenderChunk, RENDER_CHUNK_MIN, RENDER_CHUNK_MAX, RENDER_CHUNK);
       merged.commentPageSize = clampInt(merged.commentPageSize, 1, 20, 10);
       return merged;
     } catch {

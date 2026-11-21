@@ -82,6 +82,45 @@ function installFetch(window, calls, detail, opts = {}) {
       const items = u.searchParams.get('sort') === 'earliest' ? [p1, p2] : [p2, p1];
       return json({ items, pageInfo: { hasNextPage: false, nextCursor: null } });
     }
+    if (/^\/api\/v1\/users\/[^/]+\/following$/.test(p)) {
+      return json({ items: [{ user: { id: 'u2' } }], pageInfo: { hasNextPage: false, nextCursor: null } });
+    }
+    if (/^\/api\/v1\/works\/[^/]+\/comments$/.test(p)) {
+      // 作品评论：扁平列表（回复也是 item，靠 replyToCommentNumber 关联），字段用 commentNumber
+      const w1 = {
+        id: 'w1',
+        commentNumber: 1,
+        likeCount: 1,
+        pinned: false,
+        replyToCommentNumber: null,
+        children: [],
+        author: { id: 'u1' },
+        createdAt: '2026-11-01T10:00:00.000Z',
+      };
+      const w1a = {
+        id: 'w1a',
+        commentNumber: 2,
+        likeCount: 0,
+        pinned: false,
+        replyToCommentNumber: 1,
+        children: [],
+        author: { id: 'u3' },
+        createdAt: '2026-11-01T11:00:00.000Z',
+      };
+      const w2 = {
+        id: 'w2',
+        commentNumber: 3,
+        likeCount: 8,
+        pinned: false,
+        replyToCommentNumber: null,
+        children: [],
+        author: { id: 'u2' },
+        createdAt: '2026-11-02T10:00:00.000Z',
+      };
+      const all = [w1, w1a, w2];
+      const items = u.searchParams.get('sort') === 'earliest' ? all : all.slice().reverse();
+      return json({ items, pageInfo: { hasNextPage: false, nextCursor: null } });
+    }
     if (/^\/api\/v1\/topic-collections\/col-[^/]+\/topics$/.test(p)) {
       const n = Number((p.match(/col-(\d+)/) || [])[1] || 1);
       return json({
@@ -116,6 +155,54 @@ function installFetch(window, calls, detail, opts = {}) {
           return t;
         });
         return json({ items, pageInfo: { hasNextPage: false, nextCursor: null } });
+      }
+      // 可解码游标的候选池（v1.7.5 并行加速用）：游标 = base64url(JSON)，位置是活跃时间点
+      if (opts.timePool) {
+        if (opts.timePool.slowMs) await sleep(opts.timePool.slowMs);
+        const per = opts.timePool.per || 50;
+        const step = opts.timePool.stepMs || 3600000;
+        const T0 = Date.parse('2026-11-15T00:00:00.000Z');
+        const total = (opts.timePool.pages || 20) * per;
+        let start = 0;
+        const cur = u.searchParams.get('cursor');
+        if (cur) {
+          const o = JSON.parse(Buffer.from(String(cur).replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+          start = Math.max(0, Math.round((T0 - Date.parse(o.position.orderedAt)) / step));
+        }
+        const items = [];
+        for (let k = 0; k < per; k++) {
+          const gi = start + k;
+          if (gi >= total) break;
+          const act = new Date(T0 - gi * step).toISOString();
+          // 发布时间故意跟活跃时间不同序，用来验证「最新」是按发布时间排的
+          const pub = new Date(T0 - ((gi * 7919) % total) * step).toISOString();
+          items.push(
+            makeTopic(gi + 1, {
+              id: 'tp-' + gi,
+              title: '池帖 ' + gi,
+              createdAt: pub,
+              lastActivityAt: act,
+              viewCount: gi,
+              likeCount: gi % 50,
+              replyCount: gi % 7,
+              bookmarkCount: gi % 5,
+            })
+          );
+        }
+        const lastIdx = start + items.length - 1;
+        const hasNext = items.length === per && lastIdx + 1 < total;
+        const next = hasNext
+          ? Buffer.from(
+              JSON.stringify({
+                v: 1,
+                mode: 'browse',
+                binding: { q: null, sort, kind: null, tags: [], tagMode: 'all' },
+                position: { pinnedRank: 1, orderedAt: new Date(T0 - (lastIdx + 1) * step).toISOString(), id: 'x' },
+              })
+            )
+              .toString('base64url')
+          : null;
+        return json({ items, pageInfo: { hasNextPage: !!next, nextCursor: next } });
       }
       // 可翻页的候选池：poolPages = { latest: 12, hot: 5 } 表示每条链各有几页（每页 20 条）
       if (opts.poolPages) {
@@ -244,6 +331,33 @@ const DETAIL_HTML = `<!doctype html><html><head></head><body>
   </aside>
 </main></div></body></html>`;
 
+/** 作品详情页：评论区与帖子详情同一套组件（section#comments + article[…的评论]），但没有帖子信息栏 */
+const WORK_DETAIL_HTML = `<!doctype html><html><head></head><body>
+<div id="__nuxt"><main>
+  <h1 class="work-title">我的第一个作品</h1>
+  <section id="comments" class="mt-12 min-w-0 scroll-mt-24 pb-24">
+    <div class="min-w-0">
+      <div class="flex min-h-10 flex-wrap items-center gap-3">
+        <h2 class="inline-flex items-baseline gap-0.5 text-lg font-black"><span>全部评论</span></h2>
+        <button aria-label="评论排序" role="group" class="ml-auto shrink-0">最热</button>
+      </div>
+    </div>
+    <div class="mt-4 min-w-0 [overflow-anchor:none]">
+      <article aria-label="吉吉喵 的评论" class="min-w-0 py-4">
+        <div data-post-id="w1" id="post-w1" class="grid grid-cols-[34px_minmax(0,1fr)] gap-3">
+          <div class="min-w-0"><p>作品评论一</p></div>
+        </div>
+        <div class="post-comment-replies mt-2 ml-[46px]"><div class="space-y-0"><div data-post-id="w1a" id="post-w1a" class="py-2">回复一</div></div></div>
+      </article>
+      <article aria-label="旁观者jers 的评论" class="min-w-0 py-4">
+        <div data-post-id="w2" id="post-w2" class="grid grid-cols-[34px_minmax(0,1fr)] gap-3">
+          <div class="min-w-0"><p>作品评论二</p></div>
+        </div>
+      </article>
+    </div>
+  </section>
+</main></div></body></html>`;
+
 /** 12 层楼，用来看评论区分页 */
 const DETAIL_MANY_HTML = `<!doctype html><html><head></head><body>
 <div id="__nuxt"><main>
@@ -309,14 +423,14 @@ const SETTINGS_HTML = `<!doctype html><html><head></head><body>
   </div>
 </main></div></body></html>`;
 
-function boot(html, url, { settings, detail, loggedIn, cookie, poolPages } = {}) {
+function boot(html, url, { settings, detail, loggedIn, cookie, poolPages, timePool } = {}) {
   const calls = [];
   const dom = new JSDOM(html, {
     url,
     runScripts: 'outside-only',
     pretendToBeVisual: true,
     beforeParse(window) {
-      installFetch(window, calls, detail, { loggedIn, poolPages });
+      installFetch(window, calls, detail, { loggedIn, poolPages, timePool });
       if (settings) window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
       if (cookie) {
         try {
@@ -708,11 +822,17 @@ async function runSearchKindAndFocus() {
   await sleep(800);
   const kinds = [...doc.querySelectorAll('#pictExt-panel .px-kind')].map((b) => b.textContent.trim());
   ok(kinds.length > 0, '搜索结果上出现类型标记', String(kinds.length));
-  ok(kinds[0] === '帖子', '标题命中标「帖子」', kinds[0]);
-  ok(kinds[1] === '帖子', '命中第 1 楼（就是帖子本身）也标「帖子」', kinds[1]);
-  ok(/^评论 · 第 4 楼$/.test(kinds[2] || ''), '评论命中标「评论 · 第 N 楼」', kinds[2]);
-  const href = doc.querySelector('#pictExt-panel .px-list article:nth-child(3) h2 a').getAttribute('href');
-  ok(/#post-4$/.test(href), '评论结果的链接带楼层锚点', href);
+  // 1.7.5 起「最新」按发布时间重排，顺序不再等于接口顺序 → 按标题找卡，别按下标
+  const cardOf = (n) =>
+    [...doc.querySelectorAll('#pictExt-panel .px-list article')].find(
+      (a) => (a.querySelector('h2')?.textContent || '').trim() === '帖子标题 ' + n
+    );
+  const kindOf = (n) => (cardOf(n)?.querySelector('.px-kind')?.textContent || '').trim();
+  ok(kindOf(1) === '帖子', '标题命中标「帖子」', kindOf(1));
+  ok(kindOf(2) === '帖子', '命中第 1 楼（就是帖子本身）也标「帖子」', kindOf(2));
+  ok(/^评论 · 第 4 楼$/.test(kindOf(3)), '评论命中标「评论 · 第 N 楼」', kindOf(3));
+  const href = cardOf(3)?.querySelector('h2 a')?.getAttribute('href');
+  ok(/#post-4$/.test(href || ''), '评论结果的链接带楼层锚点', href);
 
   // 2) 顶层楼层：跳到 #post-13 应该翻到第 2 页并高亮
   const many = boot(DETAIL_MANY_HTML, 'http://localhost/forum/post/topic-1#post-13', {});
@@ -734,6 +854,77 @@ async function runSearchKindAndFocus() {
   const r11 = deep.doc.getElementById('post-110');
   ok(r11 && r11.style.display !== 'none', '楼中楼翻到目标所在页');
   ok(r11 && r11.getAttribute('data-px-focus') === '1', '命中的楼中楼高亮');
+}
+
+async function runPerf() {
+  console.log('\n[I. 1.7.5 性能：深翻并发 / 最新按发布时间 / 增量渲染]');
+
+  const topicCalls = (calls) => calls.filter((c) => c.url.includes('/api/v1/topics?'));
+
+  // I1. 20 页的可解码游标池子：应该切段并发，且「最新」按发布时间倒序
+  const big = boot(HOME_HTML, 'http://localhost/', {
+    settings: { sortMode: 'replace', defaultSort: 'latest', poolLatestPages: 20, showTimes: true },
+    timePool: { pages: 20 },
+  });
+  await sleep(2500);
+  const bigCalls = topicCalls(big.calls);
+  ok(bigCalls.length <= 26, '20 页 + 少量探测就够（不是 20 次串行拉满）', String(bigCalls.length));
+  ok(/候选池 1000 条/.test(big.doc.querySelector('#pictExt-panel .px-note').textContent), '池子拿到全部 1000 条', big.doc.querySelector('#pictExt-panel .px-note').textContent);
+  const pubTimes = [...big.doc.querySelectorAll('#pictExt-panel .px-list article')].map((a) =>
+    Date.parse(a.querySelector('time[title^="发布"]')?.getAttribute('datetime') || 0)
+  );
+  ok(pubTimes.length === 20, '先显示一屏 20 条', String(pubTimes.length));
+  ok(pubTimes.every((v, i) => i === 0 || pubTimes[i - 1] >= v), '「最新」按发布时间倒序（不是活跃时间）', pubTimes.slice(0, 3).join(','));
+  const bigIds = [...big.doc.querySelectorAll('#pictExt-panel .px-list article h2 a')].map((a) => a.getAttribute('href'));
+  ok(new Set(bigIds).size === bigIds.length, '并发拉回来的条目没有重复');
+  ok(!big.doc.querySelector('#pictExt-panel .px-state'), '全程没出现报错占位');
+
+  // I2. 关掉并发加速 → 老老实实串行 20 次
+  const serial = boot(HOME_HTML, 'http://localhost/', {
+    settings: { sortMode: 'replace', defaultSort: 'views', poolLatestPages: 20, poolHotPages: 1, poolParallel: false },
+    timePool: { pages: 20 },
+  });
+  await sleep(2500);
+  ok(topicCalls(serial.calls).length === 21, '关掉并发后就是 20+1 次串行请求', String(topicCalls(serial.calls).length));
+
+  // I3. 关掉「最新按发布时间」→ 回到服务端 sort=latest 单页
+  const srv = boot(HOME_HTML, 'http://localhost/', {
+    settings: { sortMode: 'replace', defaultSort: 'latest', latestByCreated: false },
+    timePool: { pages: 20 },
+  });
+  await sleep(700);
+  ok(topicCalls(srv.calls).length === 1, '关掉后只拉一页（服务端排序）', String(topicCalls(srv.calls).length));
+  ok(topicCalls(srv.calls)[0].url.includes('sort=latest'), '走的是站点 sort=latest');
+
+  // I4. 「再多看几条」只追加、不重建：第一张卡还是原来那个 DOM 节点
+  const inc = boot(HOME_HTML, 'http://localhost/', {
+    settings: { sortMode: 'replace', defaultSort: 'views', poolLatestPages: 2, poolHotPages: 1 },
+    poolPages: { latest: 6, hot: 3 },
+  });
+  await sleep(900);
+  const firstCard = inc.doc.querySelector('#pictExt-panel .px-list article');
+  const before = inc.calls.length;
+  inc.doc.querySelector('#pictExt-panel .px-foot .px-more').dispatchEvent(new inc.window.MouseEvent('click', { bubbles: true }));
+  await sleep(300);
+  ok(inc.doc.querySelector('#pictExt-panel .px-list article') === firstCard, '追加时没有把已画的卡片重画一遍');
+  ok(inc.doc.querySelectorAll('#pictExt-panel .px-list article').length === 40, '一次多显示一屏（20 → 40）', String(inc.doc.querySelectorAll('#pictExt-panel .px-list article').length));
+  ok(inc.calls.length === before, '「再多看几条」不重复请求服务端');
+
+  // I5. 停止按钮：深翻途中能刹车，已拉到的条目留着
+  const stop = boot(HOME_HTML, 'http://localhost/', {
+    settings: { sortMode: 'replace', defaultSort: 'views', poolLatestPages: 24 },
+    timePool: { pages: 24, slowMs: 300 },
+  });
+  await sleep(900);
+  const stopBtn = stop.doc.querySelector('#pictExt-panel [data-px-stop]');
+  ok(!!stopBtn, '慢加载时底部出现「停止加载」', stop.doc.querySelector('#pictExt-panel .px-foot')?.textContent);
+  if (stopBtn) {
+    stopBtn.dispatchEvent(new stop.window.MouseEvent('click', { bubbles: true }));
+    await sleep(1500);
+    const shown = stop.doc.querySelectorAll('#pictExt-panel .px-list article').length;
+    ok(shown > 0, '停下之后已经拉到的条目还在', String(shown));
+    ok(!stop.doc.querySelector('#pictExt-panel .px-state'), '停下不是报错状态');
+  }
 }
 
 async function runTimes() {
@@ -806,6 +997,60 @@ async function runDetailReplace() {
   ok(bar.querySelector('[data-csort="latest"]').dataset.active === 'true', '切到「最新」状态同步');
 }
 
+async function runWorkComments() {
+  console.log('\n[D2. 作品详情页 · 评论区排序]');
+  const { doc, calls, window } = boot(WORK_DETAIL_HTML, 'http://localhost/works/work-1', {
+    settings: { commentSortMode: 'replace' },
+  });
+  await sleep(900);
+  const bar = doc.getElementById('pictExt-comment-sort');
+  ok(!!bar, '作品评论区也出现排序栏');
+  const labels = [...(bar ? bar.querySelectorAll('[data-csort]') : [])].map((b) => b.textContent.trim());
+  ok(labels.join(',') === '最热,关注,最早,最新,最多点赞', '作品页排序项与帖子页一致', labels.join(','));
+  ok(doc.querySelector('[aria-label="评论排序"]').style.display === 'none', '站内作品评论下拉已隐藏');
+
+  const workCalls = calls.filter((c) => /\/api\/v1\/works\/work-1\/comments/.test(c.url));
+  ok(workCalls.length > 0, '走 /works/{id}/comments 拉评论索引');
+  ok(workCalls.every((c) => Number(new URL(c.url).searchParams.get('limit')) <= 30), '作品评论 limit 不超过 30');
+  ok(workCalls.some((c) => new URL(c.url).searchParams.get('sort') === 'hot'), '最热走服务端 sort=hot');
+  ok(!calls.some((c) => /\/api\/v1\/topics\/work-1/.test(c.url)), '作品页不去拉 /topics/{id}');
+  ok(!doc.querySelector('[data-px-topic-info]'), '作品页不插帖子信息条');
+
+  const orderOf = (id) => Number(doc.querySelector(`[data-post-id="${id}"]`).closest('article').style.order);
+  const container = doc.querySelector('.mt-4.min-w-0');
+  ok(container.style.display === 'flex', '作品楼层容器同样用纵向 flex + order 排序');
+  // 接口「最热」顺序是 w2,w1a,w1 → 顶层 w2 在前
+  ok(orderOf('w2') < orderOf('w1'), '「最热」按作品评论接口顺序排', `${orderOf('w1')}/${orderOf('w2')}`);
+
+  bar.querySelector('[data-csort="earliest"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await sleep(700);
+  ok(orderOf('w1') < orderOf('w2'), '「最早」按 commentNumber 正序', `${orderOf('w1')}/${orderOf('w2')}`);
+
+  bar.querySelector('[data-csort="likes"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await sleep(700);
+  ok(orderOf('w2') < orderOf('w1'), '「最多点赞」把 8 赞的作品评论排前', `${orderOf('w1')}/${orderOf('w2')}`);
+
+  bar.querySelector('[data-csort="following"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await sleep(700);
+  ok(/关注/.test(bar.querySelector('.pxc-note').textContent || ''), '作品页关注筛选也给出登录说明');
+
+  // 登录后：只留关注的人（u2 的 w2）
+  const on = boot(WORK_DETAIL_HTML, 'http://localhost/works/work-1', {
+    settings: { commentSortMode: 'replace' },
+    loggedIn: true,
+  });
+  await sleep(900);
+  const onBar = on.doc.getElementById('pictExt-comment-sort');
+  onBar.querySelector('[data-csort="following"]').dispatchEvent(new on.window.MouseEvent('click', { bubbles: true }));
+  await sleep(900);
+  const note = onBar.querySelector('.pxc-note').textContent || '';
+  ok(/只显示你关注的 1 条评论/.test(note), '作品页关注筛选按作者过滤并说明条数', note);
+  ok(
+    on.doc.querySelector('[data-post-id="w1"]').closest('article').style.display === 'none',
+    '关注筛选把未关注作者的评论藏起来'
+  );
+}
+
 async function runSettings() {
   console.log('\n[E. 设置页]');
   const { window, doc } = boot(SETTINGS_HTML, 'http://localhost/settings');
@@ -818,7 +1063,7 @@ async function runSettings() {
   ok(!!sec, 'PICTEXT 设置面板出现');
   const switches = sec.querySelectorAll('[data-px-set][role="switch"]');
   const selects = sec.querySelectorAll('select[data-px-set]');
-  ok(switches.length === 14, '14 个开关', String(switches.length));
+  ok(switches.length === 17, '17 个开关（含首页数据统计）', String(switches.length));
   ok(selects.length === 4, '4 个下拉（排序模式 / 默认排序 / 评论排序模式 / 折叠阈值）', String(selects.length));
 
   const modeSel = sec.querySelector('select[data-px-set="sortMode"]');
@@ -865,6 +1110,73 @@ async function runCookie() {
   ok(fc.length > 0 && fc.every((c) => c.init.credentials === 'omit'), '关掉登录态后关注流也是 credentials:omit');
 }
 
+async function runStats() {
+  console.log('\n[J. 首页数据统计卡片（独立懒加载）]');
+  // 默认关：首页不该出现卡片
+  const off = boot(HOME_HTML, 'http://localhost/');
+  await sleep(500);
+  ok(!off.doc.getElementById('pictExt-stats'), '默认关：首页没有统计卡片');
+  ok(off.calls.filter((c) => /\/api\/v1\/topics/.test(c.url) && new URL(c.url).searchParams.get('sort') === 'latest').length === 0, '默认关：不额外发统计请求');
+
+  // 打开开关：卡片挂载，默认折叠，不发数据请求
+  const on = boot(HOME_HTML, 'http://localhost/', { settings: { showStats: true } });
+  await sleep(500);
+  const card = on.doc.getElementById('pictExt-stats');
+  ok(!!card, '打开开关：首页出现统计卡片');
+  const panel = card && card.querySelector('.pxst-panel');
+  ok(!!panel && panel.hidden === true, '卡片默认折叠');
+  ok(card && card.querySelectorAll('[data-px-stats-tab]').length === 2, '两个标签页：帖子发布 / 回复热度');
+  ok(!!on.doc.getElementById('pictExt-style') && /pxst-svg/.test(on.doc.getElementById('pictExt-style').textContent), '样式随模块注入');
+  const beforeExpand = on.calls.filter((c) => /\/api\/v1\/topics/.test(c.url) && (new URL(c.url).searchParams.get('sort') === 'latest')).length;
+
+  // 点开：懒加载触发 /topics?sort=latest，渲染 SVG
+  const tog = card.querySelector('[data-px-stats-toggle]');
+  tog.dispatchEvent(new on.window.MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+  await sleep(500);
+  const afterExpand = on.calls.filter((c) => /\/api\/v1\/topics/.test(c.url) && new URL(c.url).searchParams.get('sort') === 'latest').length;
+  ok(afterExpand > beforeExpand, '点开才发统计请求（懒加载）');
+  ok(!!card.querySelector('.pxst-svg'), '渲染出折线/柱状 SVG 图');
+  ok(/帖子发布总数统计/.test(card.querySelector('.pxst-title')?.textContent || ''), '默认显示「帖子发布总数统计」');
+  ok(!!on.window.localStorage.getItem('pictExt:stats:v1'), '统计结果写进本机缓存');
+
+  // 切到「回复热度」：标题变化，仍是同一份数据
+  const tabReply = card.querySelector('[data-px-stats-tab="replies"]');
+  tabReply.dispatchEvent(new on.window.MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+  await sleep(120);
+  ok(/回复热度统计/.test(card.querySelector('.pxst-title')?.textContent || ''), '切到「回复热度」标题更新');
+  ok(tabReply.dataset.active === 'true', '标签页选中态同步');
+
+  // 不影响 feed：原生卡片仍在（原版模式下没被隐藏）
+  const native = [...on.doc.querySelectorAll('section[aria-label="推荐帖子"] article.native-card')];
+  ok(native.length === 2 && native.every((n) => n.style.display !== 'none'), '统计卡片不影响原生推荐流显示');
+
+  // 回归：排序「全部替换」模式下，nativeHider 不能把统计卡片一起 display:none
+  const repl = boot(HOME_HTML, 'http://localhost/', { settings: { sortMode: 'replace', showStats: true } });
+  await sleep(700);
+  const rCard = repl.doc.getElementById('pictExt-stats');
+  ok(!!rCard, '替换模式下统计卡片也挂载');
+  ok(!!rCard && rCard.style.display !== 'none', '替换模式下统计卡片不被 nativeHider 隐藏（关键回归）');
+  const rPanel = repl.doc.getElementById('pictExt-panel');
+  ok(!!rPanel, '替换模式下排序面板照常存在');
+  ok(!!rCard && !!rPanel && !!rCard.nextElementSibling && rCard !== rPanel, '卡片与排序面板是两个独立节点');
+
+  // 悬停柱子显示当天详情浮层
+  const hit = card.querySelector('.pxst-hit');
+  ok(!!hit, '图表有逐日透明命中条');
+  ok(hit && hit.hasAttribute('data-px-stats-day'), '命中条带当天日期数据');
+  hit.dispatchEvent(new on.window.MouseEvent('pointermove', { bubbles: true, clientX: 120, clientY: 120 }));
+  await sleep(50);
+  const tip = on.doc.getElementById('pxc-stats-tip');
+  ok(!!tip && tip.dataset.show === '1', '悬停显示详情浮层');
+  ok(tip && /当日发帖/.test(tip.textContent) && /累计回复/.test(tip.textContent), '浮层含发帖/回复当日与累计详情');
+  ok(hit && tip && tip.textContent.includes(hit.dataset.pxStatsDay), '浮层日期与命中条一致');
+  // 移出图表 → 收起
+  const head = card.querySelector('.pxst-head');
+  head.dispatchEvent(new on.window.MouseEvent('pointermove', { bubbles: true, clientX: 5, clientY: 5 }));
+  await sleep(30);
+  ok(tip.dataset.show === '0', '移出柱子后浮层收起');
+}
+
 (async () => {
   await runNative();
   await runReplaceHome();
@@ -877,9 +1189,12 @@ async function runCookie() {
   await runProfileCollections();
   await runReplaceSearch();
   await runSearchKindAndFocus();
+  await runPerf();
   await runTimes();
   await runDetailReplace();
+  await runWorkComments();
   await runSettings();
+  await runStats();
   await runCookie();
   console.log('\n' + (failures ? `✗ ${failures} 项失败` : '✓ 全部通过'));
   process.exit(failures ? 1 : 0);

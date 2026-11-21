@@ -216,7 +216,8 @@
         const visible = orderedThreads(section).filter((a) => !a.dataset.pxHidden);
         const idx = visible.indexOf(article);
         if (idx >= 0) {
-          commentPage.topic = detailTopicId();
+          const sc = detailScope();
+          commentPage.topic = sc ? sc.key : '';
           commentPage.page = Math.floor(idx / commentPageSize()) + 1;
           applyCommentPaging(section);
         }
@@ -228,7 +229,8 @@
   }
 
   function maybeFocusHash() {
-    const topic = detailTopicId();
+    const sc = detailScope();
+    const topic = sc ? sc.key : '';
     // 换帖子了就把「已经定位过」的记录清掉，同一个 #post-N 也能再定位
     if (topic !== lastFocusTopic) {
       lastFocusTopic = topic;
@@ -242,13 +244,17 @@
   function processDetail() {
     const section = document.querySelector(COMMENT_SECTION);
     if (!section) return;
-    const topicId = detailTopicId();
-    injectTopicInfo(section, topicId);
+    const scope = detailScope();
+    // 帖子信息条 / 右侧合集只对帖子详情有意义；作品详情没有 /topics 数据
+    const topicId = scope && scope.kind === 'topic' ? scope.id : '';
+    if (topicId) {
+      injectTopicInfo(section, topicId);
+      mountCollectionBox(topicId);
+    }
     mountCommentSort(section, topicId);
     injectGlobalToggle(section);
     refreshThreads();
     applyCommentPaging(section);
-    mountCollectionBox(topicId);
     maybeFocusHash();
     expandReplyToolbars();
     if (settings.commentSortMode === 'replace') scheduleCommentOrder(section);

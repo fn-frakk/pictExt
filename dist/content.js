@@ -1,11 +1,40 @@
 /**
- * pictExt / v1.7.4
+ * pictExt / v1.9.0
+ * ---------------------------------------------------------------
+ * 【v1.9.0 变更】
+ * - 评论区排序扩展到「作品详情」页（/works/:id）：站点两类详情页共用同一套评论组件
+ *   （section#comments + article[…的评论]），所以排序 / 关注筛选 / 翻页 / 折叠全部
+ *   在作品评论区一样能用；数据接口换成 /works/{id}/comments（上限 30 条/页）。
+ * - 「最多点赞」「关注」依旧客户端排序：作品评论接口只认 hot / latest / earliest。
+ * - 作品页不再尝试拉 /topics/{id}（帖子信息条、右侧合集块只在帖子详情出现）。
+ * ---------------------------------------------------------------
+ * 【v1.8.0 变更】
+ * - 首页新增可选「PICKCAT 数据统计」卡片：两个标签页（帖子发布 / 回复热度），
+ *   视觉仿编程猫统计（累计蓝线 + 右轴红柱 + 时段刻度 + 异常红三角 + 警告条），
+ *   纯内联 SVG、配色走站点 CSS 变量跟随明暗。默认关，且卡片默认折叠，
+ *   点开才懒加载；抓取走独立低优先级链、每页让出主线程，站点推荐流照常加载。
+ *   结果本机缓存 24h。独立模块 src/25-stats.js，不碰排序/详情/评论任何逻辑。
+ * - 图表逐日透明命中条 + 悬停浮层：鼠标移到某天柱子上显示该日发帖/回复的当日与累计值，
+ *   异常刷屏日额外标注；浮层跟随鼠标、贴边自动翻转，离开即收起。
  * ---------------------------------------------------------------
  * Manifest V3 浏览器扩展的内容脚本，由 manifest.json 注入，不依赖 Tampermonkey。
  * 声明了 "world": "MAIN"，跑在页面主世界（和原油猴脚本一致），因此
  * hookRouter() 对 history.pushState 的包装、以及页面 DOM 的读写都能正常工作。
  * 全文件不使用任何 GM_* / chrome.* API，也没有外部依赖。
  * ---------------------------------------------------------------
+ * 【v1.7.5 变更】
+ * - 大批量数据的性能：
+ *   · 候选池改成「边拉边画」：第一页到手就先出一屏，后面每来一批再补；
+ *     加载超过 0.6 秒底部出现「停止加载（已翻 N 页）」，长任务随时能刹。
+ *   · 列表只往后追加，不再每点一次「再多看几条」就整块重建（旧做法 O(n²)）。
+ *     上千张卡时屏幕外的卡片用 content-visibility 跳过布局与绘制。
+ *   · 排序用预解析的毫秒时间戳，比较器里不再 new Date()。
+ *   · 深翻并发：站点的游标就是 base64 的 {position:{orderedAt}}，读得懂就把要翻的页
+ *     按活跃时间点切成几段同时拉（墙钟时间约 1/4～1/6）；读不懂 / 请求失败自动退回串行。
+ * - 「最新」改成按**发布时间**倒序（站内 sort=latest 其实是按最后活跃时间，
+ *   老帖被回复一句就顶上来）。设置里可关掉，回到服务端顺序。
+ * - 纯时间排序不再把置顶帖硬塞到最前面，置顶帖也按自己的发布时间排队。
+ * - 设置里新增：「最新」按发布时间、深翻并发加速、候选池每次多显示几条。
  * 【v1.7.4 变更】
  * - 右侧栏目录很长 + 合集很多时两块会叠在一起：侧栏改成整体可滚（overflow-y:auto），
  *   合集块限高 45vh 自带滚动、加实底并压在上层，目录不再透过来。
@@ -97,6 +126,14 @@
   const CACHE_TTL = 90 * 1000;
   const DEBUG = false;
 
+  /* ---------- 性能相关（v1.7.5） ---------- */
+  const POOL_WORKERS = 8;         // 深翻时最多几个并行段（整池共享，按页数分配）
+  const PAGES_PER_WORKER = 10;    // 每段至少 10 页才值得单开一个 worker
+  const RENDER_CHUNK = 20;        // 「再多看几条」一次多渲染多少张卡
+  const RENDER_CHUNK_MIN = 10;
+  const RENDER_CHUNK_MAX = 100;
+  const POOL_CACHE_MAX = 4;       // 候选池缓存最多留几个（每个可能上万条，不能无限存）
+
   /** 8 个排序键（v1.5 起「全部替换」模式固定就是这 8 个，不再跟站内合并） */
   const SORT_KEYS = new Set([
     'following', 'recommended', 'default', 'search', 'latest', 'earliest',
@@ -129,8 +166,12 @@
     showPinned: true,         // 卡片显示置顶标记
     poolLatestPages: 6,       // 候选池：最新链翻几页（1-100）
     poolHotPages: 3,          // 候选池：热帖（推荐）链翻几页（1-100）
+    latestByCreated: true,    // 「最新」按发布时间（站内 sort=latest 其实是按活跃时间）
+    poolParallel: true,       // 深翻时按时间锚点切段并行拉（读不懂游标就自动退回串行）
+    poolRenderChunk: 20,      // 「再多看几条」一次多显示几条（10-100）
     commentPaging: true,      // 评论区按页显示（像 B 站那样）
     commentPageSize: 10,      // 评论每页楼层数（1-20）
+    showStats: false,         // 首页「PICKCAT 数据统计」卡片（默认关，独立懒加载，不碰 feed）
   };
 
   /** 把数字设置夹回合法区间，坏存档 / 手输都不至于把请求打爆 */
@@ -152,6 +193,7 @@
       if (!SORT_KEYS.has(merged.defaultSort)) merged.defaultSort = 'latest';
       merged.poolLatestPages = clampInt(merged.poolLatestPages, 1, 100, 6);
       merged.poolHotPages = clampInt(merged.poolHotPages, 1, 100, 3);
+      merged.poolRenderChunk = clampInt(merged.poolRenderChunk, RENDER_CHUNK_MIN, RENDER_CHUNK_MAX, RENDER_CHUNK);
       merged.commentPageSize = clampInt(merged.commentPageSize, 1, 20, 10);
       return merged;
     } catch {
@@ -316,8 +358,15 @@
    * 3. 数据层
    * ============================================================ */
 
-  /** 统一字段。带 q 的搜索返回里没有 likeCount，标为 null 等补齐。 */
+  /**
+   * 统一字段。
+   * - 带 q 的搜索返回里没有 likeCount，标为 null 等补齐（绝不填 0 冒充）。
+   * - `_t` / `_a` 是排好序用的毫秒时间戳：排序里再 new Date() 的话，
+   *   一万条 × 每次比较都解析一次字符串，光是排序就能卡住主线程。
+   */
   function normalize(it) {
+    const createdAt = it.createdAt || null;
+    const lastActivityAt = it.lastActivityAt || createdAt;
     return {
       id: it.id,
       title: it.title || '',
@@ -327,14 +376,16 @@
       viewCount: Number(it.viewCount ?? 0),
       likeCount: typeof it.likeCount === 'number' ? it.likeCount : null,
       bookmarkCount: typeof it.bookmarkCount === 'number' ? it.bookmarkCount : null,
-      createdAt: it.createdAt || null,
+      createdAt,
       // editedAt = 最近一次修改（帖子有新版本才有值）
       editedAt: it.editedAt || null,
-      lastActivityAt: it.lastActivityAt || it.createdAt || null,
+      lastActivityAt,
       tags: Array.isArray(it.tags) ? it.tags : [],
       pinned: !!(it.pinned || it.pinnedGlobally),
       kind: it.kind || '',
       matchPostNumber: it.match ? it.match.postNumber : null,
+      _t: Date.parse(createdAt) || 0,
+      _a: Date.parse(lastActivityAt) || 0,
     };
   }
 
@@ -369,28 +420,225 @@
     return { items, next };
   }
 
+  /* ------------------------------------------------------------
+   * 3.1 游标：站点的 nextCursor 是一段 base64url 的 JSON，形如
+   *   {v:1, mode:"browse", binding:{q,sort,kind,tags,tagMode},
+   *    position:{pinnedRank, orderedAt:"<时间>", id}}
+   * 这意味着「位置 = 某个活跃时间点」，于是可以按时间点直接落页：
+   * 深翻 100 页时把一条链切成几段同时拉，墙钟时间从 30 秒降到几秒。
+   *
+   * 只做字符串层面的替换（不动 binding、不解析 UTF-8），读不懂就返回 null，
+   * 上层自动退回逐页串行 —— 站点改版也不会因此坏掉。
+   * ---------------------------------------------------------- */
+  function b64urlToBin(s) {
+    let t = String(s).replace(/-/g, '+').replace(/_/g, '/');
+    while (t.length % 4) t += '=';
+    try {
+      return atob(t);
+    } catch {
+      return null;
+    }
+  }
+
+  function binToB64url(bin) {
+    try {
+      return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    } catch {
+      return null;
+    }
+  }
+
+  /** 游标里记的「排序时间点」（毫秒）。读不出来 → null */
+  function cursorOrderedAt(cursor) {
+    if (!cursor) return null;
+    const json = b64urlToBin(cursor);
+    if (!json) return null;
+    const m = json.match(/"orderedAt"\s*:\s*"([^"]+)"/);
+    if (!m) return null;
+    const t = Date.parse(m[1]);
+    return Number.isFinite(t) ? t : null;
+  }
+
+  /** 复制一份游标，只把位置换成指定时间点（binding 原样保留） */
+  function cursorAt(cursor, iso) {
+    if (!cursor) return null;
+    const json = b64urlToBin(cursor);
+    if (!json || !/"orderedAt"\s*:\s*"[^"]+"/.test(json)) return null;
+    const next = json.replace(/("orderedAt"\s*:\s*")[^"]+(")/, `$1${iso}$2`);
+    return binToB64url(next);
+  }
+
+  const isoOf = (ms) => new Date(ms).toISOString();
+
+  /* ------------------------------------------------------------
+   * 3.2 顺着游标拉页
+   * ---------------------------------------------------------- */
+
   /**
-   * 顺链拉多页（游标必须串行）。返回最后那个游标，方便之后继续往后翻。
-   * done = 这条链已经到底（服务端没给 nextCursor）
+   * @param {object} opts
+   *   pages    这次最多拉几页
+   *   cursor   从哪个游标接着拉（null = 从头）
+   *   done     这条链已经到底
+   *   workers  并行段数（1 = 串行）
+   *   onPage(st)  每拉完一页回调一次，st.pending 里是这一页的新条目
+   *   stopped()   返回 true 就尽快停（用户点了「停止」）
+   * @returns {{pages:number, cursor:string|null, done:boolean}}
    */
-  async function fetchChain(ctx, sort, pages) {
-    const out = [];
+  async function walkChain(ctx, sort, opts) {
+    const budget = Math.max(1, opts.pages || 1);
+    const stopped = opts.stopped || (() => false);
+    const onPage = opts.onPage || (() => {});
+    const st = { pages: 0, cursor: opts.cursor || null, done: !!opts.done, pending: [] };
+    if (st.done) return st;
+
+    const first = await fetchTopicPage(ctx, sort, st.cursor);
+    st.pages++;
+    st.pending.push(...first.items);
+    st.cursor = first.next;
+    st.done = !first.next;
+    onPage(st);
+    if (st.done || st.pages >= budget || stopped()) return st;
+
+    const remain = budget - st.pages;
+    const segs = planSegments(first, remain, opts.workers || 1);
+    if (!segs) return walkSerial(ctx, sort, st, remain, stopped, onPage);
+    return runSegments(ctx, sort, st, segs, remain, stopped, onPage);
+  }
+
+  /** 一页一页顺着游标走（默认路径；也是并发条件不成立时的兜底） */
+  async function walkSerial(ctx, sort, st, remain, stopped, onPage) {
+    let cursor = st.cursor;
+    for (let i = 0; i < remain && cursor && !stopped(); i++) {
+      const p = await fetchTopicPage(ctx, sort, cursor);
+      st.pages++;
+      st.pending.push(...p.items);
+      cursor = p.next;
+      if (!cursor) st.done = true;
+      onPage(st);
+    }
+    st.cursor = cursor;
+    return st;
+  }
+
+  /**
+   * 把剩下要翻的页按「活跃时间点」切段：先用页 1 里条目的疏密估一段跨度，
+   * 再在这个跨度上等距探几个时间点（探测本身也返回一整页真实数据，不浪费）。
+   * 返回 null = 不值得并行 / 游标读不动 → 上层走串行。
+   */
+  function planSegments(first, remain, workers) {
+    if (!settings.poolParallel) return null;
+    if (workers < 2 || remain < 4 || !first.next) return null;
+    const anchor = cursorOrderedAt(first.next);
+    if (!anchor) return null;
+
+    const times = first.items.map((i) => i._a).filter((t) => t > 0);
+    if (times.length < 2) return null;
+    const hi = Math.max(...times);
+    const lo = Math.min(...times);
+    const perDay = hi > lo ? (times.length / (hi - lo)) * 86400000 : PAGE_LIMIT;
+    // 估「再翻 remain 页大约要往回追多少天」，至少给半天、最多给 10 年
+    const estDays = Math.min(3650, Math.max(0.5, (remain * PAGE_LIMIT) / Math.max(0.5, perDay)));
+    if (estDays < 0.2) return null;
+
+    const k = Math.min(workers, Math.max(2, Math.ceil(remain / PAGES_PER_WORKER)));
+    const bounds = [];
+    for (let i = 1; i < k; i++) bounds.push(anchor - (estDays * i * 86400000) / k);
+    return { anchor, bounds, k };
+  }
+
+  async function runSegments(ctx, sort, st, seg, remain, stopped, onPage) {
+    const { bounds } = seg;
+    // 探测：每个边界点各拉一页（并行），拿到该段真正的起点游标。
+    // 探测页本身就是真实数据（该时间点之后的第一页），不浪费。
+    const probes = await Promise.all(
+      bounds.map((ts) => {
+        const c = cursorAt(st.cursor, isoOf(ts));
+        if (!c) return Promise.resolve(null);
+        return fetchTopicPage(ctx, sort, c).then(
+          (p) => ({ ts, p }),
+          () => null // 这个点探不动就不切这一段，由上面那段一路走下来兜住
+        );
+      })
+    );
+
+    let good = probes.filter((x) => x && x.p.items.length);
+
+    // 一个都没探到 = 估的跨度比站点实际历史还早（或探到了空页）：
+    // 把每个点往回收一半再试一轮，还是不成才退回串行。多花几条请求，换一次真正并行的机会。
+    if (!good.length) {
+      const retried = await Promise.all(
+        bounds.map((ts) => {
+          const mid = seg.anchor - (seg.anchor - ts) / 2;
+          const c = cursorAt(st.cursor, isoOf(mid));
+          if (!c) return Promise.resolve(null);
+          return fetchTopicPage(ctx, sort, c).then(
+            (p) => ({ ts: mid, p }),
+            () => null
+          );
+        })
+      );
+      good = retried.filter((x) => x && x.p.items.length);
+    }
+    if (!good.length) return walkSerial(ctx, sort, st, remain, stopped, onPage);
+
+    good.sort((a, b) => b.ts - a.ts); // 从近到远
+
+    const starts = [{ cursor: st.cursor, lower: good[0].ts }]; // 第一段：从页 1 之后接着走
+    for (const { ts, p } of good) {
+      st.pending.push(...p.items);
+      st.pages++;
+      onPage(st);
+      starts.push({ cursor: p.next, lower: null, ts });
+    }
+    for (let i = 1; i < starts.length; i++) {
+      starts[i].lower = i + 1 < starts.length ? good[i].ts : null; // 最后一段不管地界，一直走到底
+    }
+
+    // 预算只做安全阀：按设置的目标页数封顶（探测页额外算）。真估偏了顶多砍掉最老的那几页，
+    // 不会在中间留洞 —— 池子里「新的那部分」永远是完整的。
+    let used = 0;
+    const maxPages = remain;
+    const results = await Promise.all(
+      starts.map(async (s) => {
+        let cursor = s.cursor;
+        let pages = 0;
+        let done = !cursor;
+        while (cursor && used < maxPages && !stopped()) {
+          used++;
+          const p = await fetchTopicPage(ctx, sort, cursor);
+          pages++;
+          st.pending.push(...p.items);
+          st.pages++;
+          cursor = p.next;
+          onPage(st);
+          if (!cursor) {
+            done = true;
+            break;
+          }
+          const lastT = p.items.length ? p.items[p.items.length - 1]._a : 0;
+          if (s.lower != null && lastT && lastT < s.lower) break; // 够到下一段的地界了
+          if (!p.items.length) break;
+        }
+        return { pages, cursor, done };
+      })
+    );
+
+    // 续翻的起点取「最深的那个游标」；所有段都到底才算这条链到底
     let cursor = null;
-    let done = false;
-    let n = 0;
-    for (let i = 0; i < pages; i++) {
-      const page = await fetchTopicPage(ctx, sort, cursor);
-      out.push(...page.items);
-      n++;
-      cursor = page.next;
-      if (!cursor) {
-        done = true;
+    for (let i = results.length - 1; i >= 0; i--) {
+      if (results[i].cursor) {
+        cursor = results[i].cursor;
         break;
       }
     }
-    return { items: out, cursor, done, pages: n };
+    st.cursor = cursor;
+    st.done = results.every((r) => r.done);
+    return st;
   }
 
+  /* ------------------------------------------------------------
+   * 3.3 候选池
+   * ---------------------------------------------------------- */
   const detailCache = new Map();
 
   /** 搜索返回体没有 likeCount，用详情里的 firstPost.likeCount 补 */
@@ -421,76 +669,133 @@
     await Promise.all(workers);
   }
 
-  /**
-   * 候选池 = 最新链 + 热帖链。
-   * 默认只取 9 页（最新 6 + 热帖 3，约 450 条）；这两条链的游标一并留着，
-   * 用户点「继续加载」时可以接着往后翻，不是到第 9 页就断了。
-   */
   const poolCache = new Map();
 
-  /** 按 id 合并，保留带点赞数的那份 */
-  function mergeTopics(target, incoming) {
-    const map = new Map(target.map((i) => [i.id, i]));
-    for (const it of incoming) {
-      const prev = map.get(it.id);
-      if (!prev) map.set(it.id, it);
-      else if (prev.likeCount === null && it.likeCount !== null) map.set(it.id, it);
-    }
-    return [...map.values()];
-  }
-
-  function poolKey(ctx) {
-    return JSON.stringify([ctx.q || '', ctx.tag || '', ctx.boards || []]);
-  }
-
-  /** 初始池：最新 6 页 + 热帖 3 页 */
-  async function createPool(ctx) {
-    const key = poolKey(ctx);
-    const hit = poolCache.get(key);
-    if (hit && Date.now() - hit.at < CACHE_TTL) return { ...hit.state, items: hit.state.items.slice() };
-
-    const latestPages = clampInt(settings.poolLatestPages, 1, POOL_PAGES_MAX, POOL_LATEST_PAGES);
-    const hotPages = clampInt(settings.poolHotPages, 1, POOL_PAGES_MAX, POOL_HOT_PAGES);
-    const [latest, hot] = await Promise.all([
-      fetchChain(ctx, 'latest', latestPages),
-      fetchChain(ctx, 'hot', hotPages),
-    ]);
-    const state = {
-      items: mergeTopics([], [...hot.items, ...latest.items]),
-      cursorLatest: latest.cursor,
-      cursorHot: hot.cursor,
-      doneLatest: latest.done,
-      doneHot: hot.done,
-      pages: latest.pages + hot.pages,
+  /** 这个排序要哪几条链、每条链先翻几页 */
+  function poolPlan(sort) {
+    const chains = (sort && sort.poolChains) || ['latest', 'hot'];
+    const pagesOf = {
+      latest: clampInt(settings.poolLatestPages, 1, POOL_PAGES_MAX, POOL_LATEST_PAGES),
+      hot: clampInt(settings.poolHotPages, 1, POOL_PAGES_MAX, POOL_HOT_PAGES),
     };
-    poolCache.set(key, { at: Date.now(), state });
-    return { ...state, items: state.items.slice() };
+    return chains.map((c) => ({ sort: c, pages: pagesOf[c] || 1 }));
   }
 
-  /** 池子里的条目都看完了：两条链各再往后翻一页（谁没到底就翻谁） */
-  async function extendPool(ctx, state) {
-    const jobs = [];
-    if (!state.doneLatest)
-      jobs.push(fetchTopicPage(ctx, 'latest', state.cursorLatest).then((p) => ({ chain: 'latest', p })));
-    if (!state.doneHot) jobs.push(fetchTopicPage(ctx, 'hot', state.cursorHot).then((p) => ({ chain: 'hot', p })));
-    if (!jobs.length) return 0;
+  function poolKey(ctx, plan) {
+    return JSON.stringify([ctx.q || '', ctx.tag || '', ctx.boards || [], plan.map((p) => p.sort + ':' + p.pages)]);
+  }
 
-    const rs = await Promise.all(jobs);
-    let added = 0;
-    for (const { chain, p } of rs) {
-      const before = state.items.length;
-      state.items = mergeTopics(state.items, p.items);
-      added += state.items.length - before;
-      state.pages++;
-      if (chain === 'latest') {
-        state.cursorLatest = p.next;
-        state.doneLatest = !p.next;
+  function newPoolState(plan) {
+    const state = { items: [], index: new Map(), chains: {}, plan, pages: 0, target: 0, stopped: false };
+    for (const p of plan) {
+      state.chains[p.sort] = { cursor: null, done: false, pages: 0 };
+      state.target += p.pages;
+    }
+    // 整池共享 6 个 worker，按各链页数分配
+    const total = Math.max(1, state.target);
+    for (const p of plan) {
+      p.workers = Math.max(1, Math.min(POOL_WORKERS, Math.round((POOL_WORKERS * p.pages) / total) || 1));
+    }
+    return state;
+  }
+
+  function clonePool(state) {
+    const out = {
+      items: state.items.slice(),
+      index: new Map(state.index),
+      chains: {},
+      plan: state.plan.map((p) => ({ ...p })),
+      pages: state.pages,
+      target: state.target,
+      stopped: state.stopped,
+    };
+    for (const k of Object.keys(state.chains)) out.chains[k] = { ...state.chains[k] };
+    return out;
+  }
+
+  /** 按 id 去重合并；同一条目已有的话，把「补到点赞数」的那份换进去 */
+  function addItems(state, incoming) {
+    for (const it of incoming) {
+      const at = state.index.get(it.id);
+      if (at === undefined) {
+        state.index.set(it.id, state.items.length);
+        state.items.push(it);
       } else {
-        state.cursorHot = p.next;
-        state.doneHot = !p.next;
+        const prev = state.items[at];
+        if (prev.likeCount === null && it.likeCount !== null) state.items[at] = it;
       }
     }
-    return added;
+  }
+
+  /**
+   * 按 plan 把各条链拉起来（各链之间并行；单条链内部再按时间切段并行）。
+   * hooks: { onPage(state), stopped() }
+   */
+  async function runChains(ctx, state, only, pagesOf, hooks) {
+    const stopped = (hooks && hooks.stopped) || (() => false);
+    const onUpdate = (hooks && hooks.onPage) || (() => {});
+    const jobs = state.plan
+      .filter((p) => !only || only.includes(p.sort))
+      .filter((p) => !state.chains[p.sort].done)
+      .map((p) => {
+        const chain = state.chains[p.sort];
+        let seen = 0;
+        return walkChain(ctx, p.sort, {
+          pages: pagesOf ? pagesOf(p) : p.pages,
+          cursor: chain.cursor,
+          done: chain.done,
+          workers: pagesOf ? 1 : p.workers,
+          stopped,
+          onPage: (local) => {
+            if (local.pending.length) {
+              addItems(state, local.pending.splice(0));
+            }
+            const delta = local.pages - seen;
+            if (delta > 0) {
+              seen = local.pages;
+              state.pages += delta;
+            }
+            onUpdate(state);
+          },
+        }).then((res) => {
+          chain.cursor = res.cursor;
+          chain.done = res.done;
+          chain.pages += res.pages;
+        });
+      });
+    await Promise.all(jobs);
+    return state;
+  }
+
+  /** 初始池：按当前排序需要的链和页数拉起来（进度通过 hooks.onPage 往外抛） */
+  async function createPool(ctx, sort, hooks) {
+    const plan = poolPlan(sort);
+    const key = poolKey(ctx, plan);
+    const hit = poolCache.get(key);
+    if (hit && Date.now() - hit.at < CACHE_TTL) {
+      const state = clonePool(hit.state);
+      if (hooks && hooks.onPage) hooks.onPage(state);
+      return state;
+    }
+    const state = newPoolState(plan);
+    await runChains(ctx, state, null, null, hooks);
+    poolCache.set(key, { at: Date.now(), state: clonePool(state) });
+    while (poolCache.size > POOL_CACHE_MAX) poolCache.delete(poolCache.keys().next().value);
+    return state;
+  }
+
+  /** 池子里的条目都看完了：每条没到底的链各再往后翻一页 */
+  async function extendPool(ctx, state, hooks) {
+    const before = state.items.length;
+    await runChains(ctx, state, null, () => 1, hooks);
+    poolCache.clear(); // 池子被续翻过，缓存里的那份已经不是最新的了
+    return state.items.length - before;
+  }
+
+  /** 计划里的链都到底了，才算真的没得翻 */
+  function poolDone(state) {
+    if (!state) return true;
+    return state.plan.every((p) => state.chains[p.sort] && state.chains[p.sort].done);
   }
 
   /** 人话版错误提示 */
@@ -544,6 +849,11 @@
   font-size:12px; line-height:1.6; color:var(--px-dim); margin:0 0 10px; padding-left:2px;
 }
 #${PANEL_ID} .px-list{ display:flex; flex-direction:column; gap:12px; }
+/* 几千张卡也不卡：屏幕外的卡片跳过布局与绘制（v1.7.5） */
+#${PANEL_ID} .px-list > article{
+  content-visibility:auto;
+  contain-intrinsic-size:auto 170px;
+}
 #${PANEL_ID} .px-state{
   padding:26px 12px; text-align:center; font-size:13px; color:var(--px-dim);
 }
@@ -714,6 +1024,11 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
    *   pool   —— 服务端没有这个排序，客户端在候选池里排
    * 站点 /topics 只接受 relevance|latest|hot，浏览量 / 点赞 / 回复 / 收藏
    * 都没有服务端排序，所以这 4 项只能在候选池里排。
+   *
+   * poolChains：这个排序需要哪几条链喂池子。
+   *   站内 sort=latest 实际是按「最后活跃时间」（被回复就往前顶），
+   *   所以「最新 = 按发布时间」也得在池子里重排（只翻最新这一条链就够：
+   *   刚发的帖子活跃时间必然最新，一定落在最前面几页里）。
    * ============================================================ */
   const SORTS = [
     { key: 'following', label: '关注', mode: 'feed', feedScope: 'following', needAuth: true, note: '只看你关注的训练师发的帖子（需登录）' },
@@ -727,16 +1042,51 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       note: '站内不加插件时的原始顺序（板块页默认顺序）',
     },
     { key: 'search', label: '站内搜索', mode: 'server', serverSort: 'relevance', searchOnly: true, note: '站内搜索自己的相关度排序（就是原生结果）' },
-    { key: 'latest', label: '最新', mode: 'server', serverSort: 'latest', note: '按发布时间倒序' },
+    {
+      key: 'latest',
+      label: '最新',
+      mode: 'server',
+      serverSort: 'latest',
+      note: '按发布时间倒序',
+      poolChains: ['latest'],
+    },
     // /topics 只接受 relevance|latest|hot，没有「最早」，只能在候选池里按 createdAt 正序
-    { key: 'earliest', label: '最早', mode: 'pool', metric: 'createdAt', asc: true, note: '在候选池里按发布时间正序（接口没有服务端最早）' },
-    { key: 'views', label: '最多浏览', mode: 'pool', metric: 'viewCount', note: '按浏览量排序' },
-    { key: 'likes', label: '最多点赞', mode: 'pool', metric: 'likeCount', note: '按点赞数排序' },
-    { key: 'replies', label: '最多回复', mode: 'pool', metric: 'replyCount', note: '按回复数排序' },
-    { key: 'bookmarks', label: '最多收藏', mode: 'pool', metric: 'bookmarkCount', note: '按收藏数排序' },
+    {
+      key: 'earliest',
+      label: '最早',
+      mode: 'pool',
+      metric: 'createdAt',
+      asc: true,
+      poolChains: ['latest'],
+      note: '在候选池里按发布时间正序（接口没有服务端最早）',
+    },
+    { key: 'views', label: '最多浏览', mode: 'pool', metric: 'viewCount', poolChains: ['latest', 'hot'], note: '按浏览量排序' },
+    { key: 'likes', label: '最多点赞', mode: 'pool', metric: 'likeCount', poolChains: ['latest', 'hot'], note: '按点赞数排序' },
+    { key: 'replies', label: '最多回复', mode: 'pool', metric: 'replyCount', poolChains: ['latest', 'hot'], note: '按回复数排序' },
+    { key: 'bookmarks', label: '最多收藏', mode: 'pool', metric: 'bookmarkCount', poolChains: ['latest', 'hot'], note: '按收藏数排序' },
     { key: 'hot', label: '最热', mode: 'server', serverSort: 'hot', note: '站内热度排名（服务端 all-time 热度分）' },
   ];
   const SORT_MAP = new Map(SORTS.map((s) => [s.key, s]));
+
+  /**
+   * 实际执行的排序（设置会影响的那几项在这里改道）。
+   * 「最新」默认走候选池按发布时间排 —— 站内 sort=latest 是按活跃时间，
+   * 一个老帖被回复就会顶到前面，看着不像「最新」。设置里关掉就回到服务端顺序。
+   */
+  function resolveSort(key) {
+    const s = SORT_MAP.get(key) || SORT_MAP.get('latest');
+    if (key === 'latest' && settings.latestByCreated) {
+      return {
+        ...s,
+        mode: 'pool',
+        metric: 'createdAt',
+        desc: true,
+        poolChains: ['latest'],
+        note: '按帖子发布时间倒序（站内「最新」其实按活跃时间，这里在候选池里重排）',
+      };
+    }
+    return s;
+  }
 
   /**
    * 某一类页面该给哪 8 项：
@@ -912,11 +1262,18 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
 
   /* ============================================================
    * 7. 列表视图
+   * ------------------------------------------------------------
+   * 性能约定（v1.7.5）：
+   * 1. 列表只「往后追加」，不整块重建 —— 缓存里的几千条数据不会每点一次
+   *    「再多看几条」就把已经画好的卡片全部丢掉重画（旧做法是 O(n²)）。
+   * 2. 候选池边拉边画：第一页到手就先出一屏，后面每来一批再补，深翻 100 页
+   *    也不会出现「白屏等 30 秒」。
+   * 3. 排序用 normalize() 里预解析好的 _t / _a 毫秒数，比较器里不再 new Date()。
    * ============================================================ */
   class FeedView {
     /**
      * @param {HTMLElement} panel
-     * @param {'home'|'search'} kind
+     * @param {'home'|'search'|'category'} kind
      * @param {{q?:string, tag?:string, boards?:string[]}} ctx
      * @param {() => HTMLElement[]} getNativeNodes 取当前需要隐藏的原生节点
      */
@@ -943,12 +1300,21 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       this.feedState = null;
       this.loading = false;
       this.errorText = '';
+      this.renderedIds = [];      // 已经画在 DOM 里的卡片 id（决定能不能追加）
+      this.paintTimer = 0;
+      this.stopTimer = 0;
+      this.stopRequested = false;
 
       this.tabEls.forEach((btn) => {
         btn.addEventListener('click', () => this.select(btn.dataset.sort));
       });
 
       this.footEl.addEventListener('click', (e) => {
+        if (e.target.closest('[data-px-stop]')) {
+          this.stopRequested = true;
+          this.footEl.innerHTML = `<span class="px-note" style="margin:0;padding:0">正在停下…</span>`;
+          return;
+        }
         if (e.target.closest('.px-more')) this.loadMore();
       });
       this.listEl.addEventListener('click', (e) => {
@@ -960,7 +1326,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     }
 
     get sort() {
-      return SORT_MAP.get(this.activeKey) || SORT_MAP.get('latest');
+      return resolveSort(this.activeKey);
     }
 
     syncTabs() {
@@ -995,6 +1361,10 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       this.feedState = null;
       this.loading = false;
       this.errorText = '';
+      this.renderedIds = [];
+      this.stopRequested = false;
+      clearTimeout(this.paintTimer);
+      clearTimeout(this.stopTimer);
       this.listEl.innerHTML = '';
       this.footEl.innerHTML = '';
       this.noteEl.hidden = true;
@@ -1006,6 +1376,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       this.loading = true;
       if (!this.listEl.children.length || this.errorText) {
         this.listEl.innerHTML = `<div class="px-state">正在加载…</div>`;
+        this.renderedIds = [];
       } else {
         this.footEl.innerHTML = `<button class="px-more" disabled>加载中…</button>`;
       }
@@ -1021,6 +1392,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
         log('load error', err);
         this.errorText = errorTextOf(err, this.sort);
         this.listEl.innerHTML = `<div class="px-state">${esc(this.errorText)}<br><button data-px-retry>重试</button></div>`;
+        this.renderedIds = [];
         this.footEl.innerHTML = '';
         this.setNote('');
       } finally {
@@ -1032,23 +1404,23 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       // 相关度排序只在有关键词时成立；纯标签浏览时站点会直接 400
       if (this.sort.serverSort === 'relevance' && !this.ctx.q) {
         this.listEl.innerHTML = `<div class="px-state">这一页没有搜索关键词，用不了「站内搜索」相关度<br>换「最新 / 最多回复 / 最热」试试</div>`;
+        this.renderedIds = [];
         this.setNote('站内搜索需要关键词');
         this.footEl.innerHTML = '';
         return;
       }
       const page = await fetchTopicPage(this.ctx, this.sort.serverSort, this.serverCursor);
       if (token !== this.token) return;
-      const seen = new Set(this.serverItems.map((i) => i.id));
-      this.serverItems.push(...page.items.filter((i) => !seen.has(i.id)));
+      const before = this.serverItems.length;
+      this.serverItems.push(...page.items);
       this.serverCursor = page.next;
       this.serverHasMore = !!page.next;
 
-      this.renderCards(this.serverItems);
+      this.syncList(this.serverItems, before === 0);
       this.setNote(`${this.sort.note} · 已加载 ${this.serverItems.length} 条`);
       this.renderFoot(this.serverHasMore, '加载更多');
     }
 
-    /** 关注 / 推荐流：翻 pages 页，板块页再按标签过滤 */
     /**
      * 关注 / 推荐流：一次拉一页（推荐流单页上限 30），底部给「继续加载」。
      * 站点的推荐游标绑定本次浏览，下一批可能直接回 RECOMMENDATION_CURSOR_INVALID，
@@ -1072,7 +1444,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
         if (!isMore) throw err; // 第一页就失败 → 交给上层显示错误
         if (token !== this.token) return;
         const expired = err && err.code === 'RECOMMENDATION_CURSOR_INVALID';
-        this.renderCards(this.serverItems);
+        this.syncList(this.serverItems, true);
         this.setNote(`${this.sort.note} · 下一批没取到（${expired ? '这一轮推荐已过期' : '接口报错'}），再点一次试试`);
         this.renderFoot(true, '继续加载');
         return;
@@ -1082,12 +1454,13 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       st.scanned += page.items.length;
       const fresh = tag ? page.items.filter((i) => (i.tags || []).some((t) => t.slug === tag)) : page.items;
       const seen = new Set(st.items.map((i) => i.id));
+      const before = st.items.length;
       st.items.push(...fresh.filter((i) => !seen.has(i.id)));
       st.cursor = page.next;
       st.done = !page.next;
       this.serverItems = st.items.slice();
 
-      this.renderCards(this.serverItems);
+      this.syncList(this.serverItems, before === 0 && this.renderedIds.length === 0);
       const base = `${this.sort.note} · 已显示 ${this.serverItems.length} 条`;
       this.setNote(
         tag
@@ -1097,47 +1470,27 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       this.renderFoot(!st.done, '继续加载');
     }
 
+    /* ---------------- 候选池 ---------------- */
+
     /**
-     * 候选池排序（浏览 / 点赞 / 回复 / 收藏）。
-     * 默认池子是 9 页（最新 6 + 热帖 3）；池子里的都看完了还会继续往后翻，
-     * 所以「9 页」只是起点，不是上限。
+     * 候选池排序（最新 / 最早 / 浏览 / 点赞 / 回复 / 收藏）。
+     * 池子起步按设置里的页数拉（默认最新 6 + 热帖 3），边拉边显示；
+     * 池子里的都看完了还能在底部「继续往后翻」，所以页数只是起点，不是上限。
      */
     async loadPool(token) {
-      if (!this.pool) {
-        const st = await createPool(this.ctx);
-        if (token !== this.token) return;
-        this.pool = st;
-        this.poolVisible = 0;
-        await this.enrichPool(token);
-        if (token !== this.token) return;
-        this.derivePool();
-      } else if (this.poolVisible >= this.poolItems.length && !this.poolDone()) {
-        // 池子见底但两条链还有下一页 → 往后翻一批
-        this.footEl.innerHTML = `<button class="px-more" disabled>正在往后翻（已翻 ${this.pool.pages} 页）…</button>`;
-        await extendPool(this.ctx, this.pool);
-        if (token !== this.token) return;
-        await this.enrichPool(token);
-        if (token !== this.token) return;
-        this.derivePool();
+      let mode = 'more';
+      if (!this.pool) mode = 'create';
+      else if (this.poolVisible >= this.poolItems.length && !this.poolDone()) mode = 'extend';
+
+      if (mode !== 'more') {
+        await this.runPoolLoad(token, mode);
+        if (mode === 'create') await this.enrichPool(token);
       }
+      if (token !== this.token) return;
 
-      const asc = !!this.sort.asc;
-      this.poolItems.sort((a, b) => {
-        if (asc) {
-          // 「最早」：按发布时间正序（同一时间再按楼层/更新时间兜底）
-          const pa = a.pinned ? 0 : 1;
-          const pb = b.pinned ? 0 : 1;
-          if (pa !== pb) return pa - pb;
-          const d = new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
-          if (d !== 0) return d;
-          return new Date(a.lastActivityAt || 0) - new Date(b.lastActivityAt || 0);
-        }
-        const d = (b[this.sort.metric] || 0) - (a[this.sort.metric] || 0);
-        if (d !== 0) return d;
-        return new Date(b.lastActivityAt || 0) - new Date(a.lastActivityAt || 0);
-      });
+      this.derivePool();
+      this.sortPool();
 
-      this.poolVisible = Math.min(this.poolItems.length, Math.max(20, this.poolVisible + 20));
       if (!this.poolItems.length) {
         // 典型场景：搜索结果接口根本不返回 bookmarkCount，收藏排序无数据可排（不假装排了）
         const metricLabel = { viewCount: '浏览量', likeCount: '点赞数', replyCount: '回复数', bookmarkCount: '收藏数' }[
@@ -1146,26 +1499,115 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
         this.listEl.innerHTML = `<div class="px-state">这个页面的接口不返回${esc(
           metricLabel
         )}，这一项排不了<br>换「最新 / 最多点赞 / 最多回复」试试</div>`;
+        this.renderedIds = [];
         this.setNote(`${this.sort.note} · 候选池 ${this.poolTotal} 条里没有一条带${esc(metricLabel)}`);
         this.footEl.innerHTML = '';
         return;
       }
-      this.renderCards(this.poolItems.slice(0, this.poolVisible));
-      const scopeNote = this.ctx.tag ? `仅 #${this.ctx.tag} 板块内` : '全站';
-      const pagesNote = `已翻 ${this.pool.pages} 页`;
-      this.setNote(
-        this.poolItems.length < this.poolTotal
-          ? `${this.sort.note} · 候选池 ${this.poolTotal} 条（${scopeNote}，${pagesNote}），其中 ${this.poolItems.length} 条带这项数据、参与排序`
-          : `${this.sort.note} · 候选池 ${this.pool.items.length} 条（${scopeNote}，${pagesNote}）`
+
+      // 每次点击只多放一屏：首次给一屏，之后每点一次加一屏
+      this.poolVisible = Math.min(
+        this.poolItems.length,
+        this.poolVisible === 0 ? this.chunk() : this.poolVisible + this.chunk()
       );
+      this.paintPool(this.poolVisible);
+      this.setNote(this.poolNote());
       if (this.poolVisible < this.poolItems.length) this.renderFoot(true, '再多看几条');
       else if (!this.poolDone()) this.renderFoot(true, `继续往后翻（已翻 ${this.pool.pages} 页）`);
       else this.renderFoot(false);
     }
 
+    /** 一次多显示几条 */
+    chunk() {
+      return clampInt(settings.poolRenderChunk, RENDER_CHUNK_MIN, RENDER_CHUNK_MAX, RENDER_CHUNK);
+    }
+
+    /**
+     * 拉池子。initial=true 建池，否则续翻一页。
+     * 每有数据进来就节流刷新一屏，不等整池拉完。
+     */
+    async runPoolLoad(token, mode) {
+      if (mode === 'create') {
+        this.setNote('正在加载候选池…');
+        this.footEl.innerHTML = `<button class="px-more" disabled>加载中…</button>`;
+      } else {
+        this.footEl.innerHTML = `<button class="px-more" disabled>正在往后翻（已翻 ${this.pool.pages} 页）…</button>`;
+      }
+      this.stopRequested = false;
+
+      // 超过 0.6 秒还没拉完，底部换成「停止」，长任务随时能刹住
+      clearTimeout(this.stopTimer);
+      this.stopTimer = setTimeout(() => {
+        if (token !== this.token || !this.loading) return;
+        this.footEl.innerHTML = `<button class="px-more" data-px-stop>停止加载（已翻 ${
+          this.pool ? this.pool.pages : 0
+        } 页）</button>`;
+      }, 600);
+
+      const hooks = {
+        stopped: () => this.stopRequested,
+        onPage: (state) => {
+          if (token !== this.token) return;
+          this.pool = state;
+          this.schedulePoolPaint();
+        },
+      };
+
+      try {
+        if (mode === 'create') {
+          this.pool = await createPool(this.ctx, this.sort, hooks);
+        } else {
+          await extendPool(this.ctx, this.pool, hooks);
+        }
+      } finally {
+        clearTimeout(this.stopTimer);
+      }
+      if (token !== this.token) return;
+      this.flushPoolPaint();
+    }
+
+    /** 边拉边画：250ms 合并一次，避免每来一页就重排+重画 */
+    schedulePoolPaint() {
+      if (this.paintTimer) return;
+      const token = this.token;
+      this.paintTimer = setTimeout(() => {
+        this.paintTimer = 0;
+        if (token !== this.token) return;
+        this.flushPoolPaint();
+        if (this.loading) this.setNote(this.poolLoadingNote());
+      }, 250);
+    }
+
+    flushPoolPaint() {
+      clearTimeout(this.paintTimer);
+      this.paintTimer = 0;
+      if (!this.pool) return;
+      this.derivePool();
+      this.sortPool();
+      // 加载过程中先放一屏出来，不多占（正式的可见条数由 loadPool 决定）
+      this.paintPool(Math.max(this.poolVisible, this.chunk()));
+    }
+
+    poolLoadingNote() {
+      const st = this.pool;
+      if (!st) return '正在加载候选池…';
+      const scope = this.ctx.tag ? `仅 #${this.ctx.tag} 板块内` : '全站';
+      return `正在加载候选池… ${scope}，已翻 ${st.pages}/${st.target} 页，收到 ${st.items.length} 条`;
+    }
+
+    poolNote() {
+      if (!this.pool) return '';
+      const scopeNote = this.ctx.tag ? `仅 #${this.ctx.tag} 板块内` : '全站';
+      const pagesNote = `已翻 ${this.pool.pages} 页`;
+      if (this.poolItems.length < this.poolTotal) {
+        return `${this.sort.note} · 候选池 ${this.poolTotal} 条（${scopeNote}，${pagesNote}），其中 ${this.poolItems.length} 条带这项数据、参与排序`;
+      }
+      return `${this.sort.note} · 候选池 ${this.pool.items.length} 条（${scopeNote}，${pagesNote}）`;
+    }
+
     /** 两条链都到底了才算真的没得翻了 */
     poolDone() {
-      return !!(this.pool && this.pool.doneLatest && this.pool.doneHot);
+      return poolDone(this.pool);
     }
 
     /** 搜索接口不返回点赞数，排「最多点赞」前先把有数的那批补上 */
@@ -1181,8 +1623,38 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     /** 按当前指标挑出能参与排序的条目（没这项数据的排除，绝不拿 0 充数） */
     derivePool() {
       const metric = this.sort.metric;
-      this.poolTotal = this.pool.items.length;
-      this.poolItems = this.pool.items.filter((i) => i[metric] !== null && i[metric] !== undefined);
+      this.poolTotal = this.pool ? this.pool.items.length : 0;
+      this.poolItems = this.pool
+        ? this.pool.items.filter((i) => i[metric] !== null && i[metric] !== undefined)
+        : [];
+    }
+
+    /** 排序：时间类按 _t（发布时间）排，数值类按指标排，都不 new Date() */
+    sortPool() {
+      const metric = this.sort.metric;
+      const asc = !!this.sort.asc;
+      const byTime = metric === 'createdAt';
+      const list = this.poolItems;
+      if (byTime) {
+        // 纯时间序：置顶帖也按自己真实的发布时间排队，不硬塞到最前面
+        list.sort((a, b) => {
+          const d = asc ? a._t - b._t : b._t - a._t;
+          if (d !== 0) return d;
+          return asc ? a._a - b._a : b._a - a._a;
+        });
+        return;
+      }
+      list.sort((a, b) => {
+        const d = (b[metric] || 0) - (a[metric] || 0);
+        if (d !== 0) return d;
+        return b._a - a._a;
+      });
+    }
+
+    /** @param {number} [shown] 要画多少条（默认当前可见条数） */
+    paintPool(shown) {
+      const n = shown == null ? this.poolVisible : shown;
+      this.syncList(this.poolItems.slice(0, Math.min(n, this.poolItems.length)), false);
     }
 
     setNote(text) {
@@ -1198,13 +1670,31 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
           : '';
     }
 
-    renderCards(items) {
+    /**
+     * 把列表同步到 items：能追加就只追加（便宜），顺序变了才整体重建（贵）。
+     * @param {Array} items 要显示的条目（顺序即显示顺序）
+     * @param {boolean} force true = 必须整体重建（排序变了 / 数据被替换过）
+     */
+    syncList(items, force) {
       if (!items.length) {
         this.listEl.innerHTML = `<div class="px-state">没有找到帖子</div>`;
+        this.renderedIds = [];
         return;
       }
+      const ids = items.map((i) => i.id);
+      const prev = this.renderedIds;
+      const hasState = !!this.listEl.querySelector('.px-state');
+      const isPrefix = prev.length <= ids.length && prev.every((id, i) => ids[i] === id);
+      if (!force && !hasState && isPrefix && prev.length === ids.length) return;
+
       const shell = nativeCardShell(this.kind);
-      this.listEl.innerHTML = items.map((t) => cardHTML(t, this.timeKey, shell, this.kind)).join('');
+      const html = (arr) => arr.map((t) => cardHTML(t, this.timeKey, shell, this.kind)).join('');
+      if (!force && !hasState && isPrefix && prev.length < ids.length) {
+        this.listEl.insertAdjacentHTML('beforeend', html(items.slice(prev.length)));
+      } else {
+        this.listEl.innerHTML = html(items);
+      }
+      this.renderedIds = ids;
     }
 
     hideNative() {
@@ -1220,7 +1710,9 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     hidden: new Map(),
     hide(nodes) {
       nodes.forEach((el) => {
-        if (!el || el.id === PANEL_ID || el.contains(document.getElementById(PANEL_ID))) return;
+        // 排序面板与首页统计卡片都是扩展自己的独立 UI，绝不进原生隐藏清单
+        // （统计卡片 #pictExt-stats 与排序栏同在 feed 父容器里，曾被一起 display:none）
+        if (!el || el.id === PANEL_ID || el.id === STATS_ID || el.contains(document.getElementById(PANEL_ID))) return;
         if (!this.hidden.has(el)) this.hidden.set(el, el.style.display);
         if (el.style.display !== 'none') el.style.display = 'none';
       });
@@ -1366,6 +1858,24 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   function detailTopicId() {
     const m = location.pathname.match(/^\/forum\/post\/([^/?#]+)/u);
     return m ? m[1] : '';
+  }
+
+  function detailWorkId() {
+    const m = location.pathname.match(/^\/works\/([^/?#]+)/u);
+    return m ? m[1] : '';
+  }
+
+  /**
+   * 评论区所属的详情页：帖子详情 / 作品详情
+   * 两类页面的评论区是同一套组件（section#comments + article[…的评论]），
+   * 但接口不同（/topics/{id}/posts vs /works/{id}/comments），所以要带上 kind。
+   */
+  function detailScope() {
+    const topic = detailTopicId();
+    if (topic) return { kind: 'topic', id: topic, key: 'topic:' + topic };
+    const work = detailWorkId();
+    if (work) return { kind: 'work', id: work, key: 'work:' + work };
+    return null;
   }
 
   /** 折叠开关按钮，样式对齐站点回复行上的小按钮 */
@@ -1721,41 +2231,51 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   ];
   /** 当前评论区排序（native = 原版不动） */
   let commentSortKey = 'native';
-  /** topicId|sort -> {at, ids, map} */
+  /** scopeKey|sort -> {at, ids, map} */
   const commentIndexCache = new Map();
   let followingCache = null;
   /** 我们改过布局的容器，退出改版时要还原（Set 而不是 WeakSet：要能遍历） */
   const touchedContainers = new Set();
+  /** 作品评论接口的 limit 上限只有 30（站点客户端也写死 30，填 50 会 400） */
+  const WORK_COMMENT_LIMIT = 30;
+
+  /** 评论区接口：帖子楼层 vs 作品评论 */
+  function commentApiPath(scope, sortKey, cursor) {
+    const enc = encodeURIComponent(scope.id);
+    if (scope.kind === 'work') {
+      return { path: '/works/' + enc + '/comments', params: { limit: WORK_COMMENT_LIMIT, sort: sortKey, cursor } };
+    }
+    return { path: '/topics/' + enc + '/posts', params: { limit: PAGE_LIMIT, sort: sortKey, cursor } };
+  }
 
   function commentSortBarEl() {
     return document.getElementById(COMMENT_SORT_ID);
   }
 
   /** 评论索引：一次拉多页，返回该排序下顶层的 id 顺序 + postId 明细 */
-  async function loadCommentIndex(topicId, sortKey) {
-    const ck = `${topicId}|${sortKey}`;
+  async function loadCommentIndex(scope, sortKey) {
+    const ck = `${scope.key}|${sortKey}`;
     const hit = commentIndexCache.get(ck);
     if (hit && Date.now() - hit.at < CACHE_TTL) return hit;
     const map = new Map();
     const ids = [];
     let cursor = null;
     for (let i = 0; i < 6; i++) {
-      const data = await apiGet('/topics/' + encodeURIComponent(topicId) + '/posts', {
-        limit: PAGE_LIMIT,
-        sort: sortKey,
-        cursor,
-      });
+      const req = commentApiPath(scope, sortKey, cursor);
+      const data = await apiGet(req.path, req.params);
       for (const p of data.items || []) {
         if (!p || !p.id) continue;
         const kids = Array.isArray(p.children) ? p.children : [];
         if (!map.has(p.id)) ids.push(p.id);
         map.set(p.id, {
           likeCount: Number(p.likeCount ?? 0),
+          // 作品评论是扁平列表（回复靠 replyToCommentNumber 自己拼），没有 children，楼高固定算 0
           depth: kids.reduce((n, c) => n + 1 + (Array.isArray(c.children) ? c.children.length : 0), 0),
           authorId: p.author?.id || '',
           createdAt: p.createdAt || null,
+          // 帖子楼层用 postNumber，作品评论用 commentNumber
           pinned: !!p.pinned,
-          postNumber: Number(p.postNumber ?? 0),
+          postNumber: Number(p.postNumber ?? p.commentNumber ?? 0),
         });
       }
       const next = data.pageInfo && data.pageInfo.nextCursor;
@@ -1870,9 +2390,10 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   }
 
   /** 算出当前排序下的楼层 id 顺序 */
-  async function buildCommentOrder(topicId, key) {
+  async function buildCommentOrder(scope, key) {
+    // 「最多点赞」和「关注」都要拿到点赞数 / 作者，统一用最早那份索引（含全部楼层）
     if (key === 'likes') {
-      const { map } = await loadCommentIndex(topicId, 'earliest');
+      const { map } = await loadCommentIndex(scope, 'earliest');
       const entries = [...map.entries()];
       const metric = 'likeCount';
       entries.sort((a, b) => {
@@ -1885,7 +2406,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       });
       return entries.map(([id]) => id);
     }
-    const { ids } = await loadCommentIndex(topicId, key);
+    const { ids } = await loadCommentIndex(scope, key);
     return ids;
   }
 
@@ -1893,14 +2414,14 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     if (!key || key === 'native') return '';
     const arts = [...section.querySelectorAll(THREAD_SEL)];
     if (!arts.length) return '还没有回复';
-    const topicId = detailTopicId();
-    if (!topicId) return '没认出这是哪个帖子（地址栏不是 /forum/post/…）';
+    const scope = detailScope();
+    if (!scope) return '没认出这是哪个帖子或作品（地址栏不是 /forum/post/… 或 /works/…）';
 
     if (key === 'following') {
       resetCommentLayout(section);
       const set = await loadFollowingSet();
       if (!set) return '关注筛选需要登录，且要能读到你的关注列表';
-      const { map } = await loadCommentIndex(topicId, 'earliest');
+      const { map } = await loadCommentIndex(scope, 'earliest');
       let shown = 0;
       for (const a of arts) {
         const info = map.get(threadPostId(a));
@@ -1911,7 +2432,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
           a.dataset.pxHidden = '1';
         }
       }
-      return `只显示你关注的 ${shown} 条楼层`;
+      return scope.kind === 'work' ? `只显示你关注的 ${shown} 条评论` : `只显示你关注的 ${shown} 条楼层`;
     }
 
     // 其余排序：清掉上一次的隐藏状态再排
@@ -1919,7 +2440,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       el.style.display = '';
       delete el.dataset.pxHidden;
     });
-    const ids = await buildCommentOrder(topicId, key);
+    const ids = await buildCommentOrder(scope, key);
     return applyCommentLayout(section, ids);
   }
 
@@ -2013,7 +2534,8 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     }
     const size = commentPageSize();
     const total = Math.max(1, Math.ceil(visible.length / size));
-    const topic = detailTopicId();
+    const scope = detailScope();
+    const topic = scope ? scope.key : '';
     if (commentPage.topic !== topic) {
       commentPage.topic = topic;
       commentPage.page = 1;
@@ -2419,7 +2941,8 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
         const visible = orderedThreads(section).filter((a) => !a.dataset.pxHidden);
         const idx = visible.indexOf(article);
         if (idx >= 0) {
-          commentPage.topic = detailTopicId();
+          const sc = detailScope();
+          commentPage.topic = sc ? sc.key : '';
           commentPage.page = Math.floor(idx / commentPageSize()) + 1;
           applyCommentPaging(section);
         }
@@ -2431,7 +2954,8 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   }
 
   function maybeFocusHash() {
-    const topic = detailTopicId();
+    const sc = detailScope();
+    const topic = sc ? sc.key : '';
     // 换帖子了就把「已经定位过」的记录清掉，同一个 #post-N 也能再定位
     if (topic !== lastFocusTopic) {
       lastFocusTopic = topic;
@@ -2445,13 +2969,17 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   function processDetail() {
     const section = document.querySelector(COMMENT_SECTION);
     if (!section) return;
-    const topicId = detailTopicId();
-    injectTopicInfo(section, topicId);
+    const scope = detailScope();
+    // 帖子信息条 / 右侧合集只对帖子详情有意义；作品详情没有 /topics 数据
+    const topicId = scope && scope.kind === 'topic' ? scope.id : '';
+    if (topicId) {
+      injectTopicInfo(section, topicId);
+      mountCollectionBox(topicId);
+    }
     mountCommentSort(section, topicId);
     injectGlobalToggle(section);
     refreshThreads();
     applyCommentPaging(section);
-    mountCollectionBox(topicId);
     maybeFocusHash();
     expandReplyToolbars();
     if (settings.commentSortMode === 'replace') scheduleCommentOrder(section);
@@ -2593,7 +3121,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       min: 1,
       max: 100,
       label: '候选池：最新页数',
-      desc: '「最多浏览 / 点赞 / 回复 / 收藏 / 最早」是在候选池里排的。这里设最新链先翻几页（每页 50 条，1-100 页）。',
+      desc: '「最新 / 最早 / 最多浏览 / 点赞 / 回复 / 收藏」都是在候选池里排的。这里设最新链先翻几页（每页 50 条，1-100 页）。设大能覆盖更多帖子，配合「深翻并发加速」也不会太慢。',
     },
     {
       key: 'poolHotPages',
@@ -2602,6 +3130,28 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       max: 100,
       label: '候选池：推荐页数',
       desc: '候选池里热帖（推荐）链先翻几页（每页 50 条，1-100 页）。池子看完还能在底部「继续往后翻」。',
+    },
+    {
+      key: 'poolRenderChunk',
+      type: 'number',
+      min: 10,
+      max: 100,
+      label: '候选池：每次多显示几条',
+      desc: '点「再多看几条」一次多放几张卡出来（10-100，默认 20）。设小一点更省内存，设大一点一屏能看更多。',
+    },
+    {
+      key: 'latestByCreated',
+      type: 'switch',
+      label: '「最新」按发布时间',
+      desc:
+        '开着：候选池里按帖子发布时间重排，刚发出来的排最前（默认）。关掉：用站内 sort=latest 的原生顺序 —— 它其实是按「最后活跃时间」，老帖被人回复一句就会被顶到前面。',
+    },
+    {
+      key: 'poolParallel',
+      type: 'switch',
+      label: '深翻并发加速',
+      desc:
+        '候选池页数设得很大时（比如各 100 页），把要翻的页按活跃时间点切成几段同时拉，墙钟时间大约缩到 1/4～1/6。游标读不懂或请求失败会自动退回一页一页串行，不会出错。',
     },
     {
       key: 'commentSortMode',
@@ -2688,6 +3238,13 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     },
     { key: 'showTags', type: 'switch', label: '卡片显示标签', desc: '在帖子卡片上显示 #标签，可点进对应板块。' },
     { key: 'showPinned', type: 'switch', label: '卡片显示置顶标记', desc: '置顶帖标题前加一枚图钉。' },
+    {
+      key: 'showStats',
+      type: 'switch',
+      label: '首页「PICKCAT 数据统计」卡片',
+      desc:
+        '在首页加一张可折叠的统计卡片（帖子发布 / 回复热度两张图，仿编程猫统计风格）。默认关。开启后卡片默认也是收起的，点开才去读数据；抓取是独立低优先级的，站点推荐流照常加载，互不干扰。结果在本机缓存 24 小时。',
+    },
   ];
 
   function switchHTML(key, on) {
@@ -2791,7 +3348,7 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       nativeHider.show();
       teardown();
     }
-    if (detailTopicId()) processDetail();
+    if (detailScope()) processDetail();
     expandReplyToolbars();
     scheduleMount();
   }
@@ -2919,6 +3476,592 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   }
 
   /* ============================================================
+   * 10.6 首页数据统计卡片（独立模块，懒加载，不阻塞 feed）
+   * ------------------------------------------------------------
+   * 一张可折叠卡片，两个标签页：帖子发布 / 回复热度。
+   * 纯内联 SVG 作图，视觉仿参考图（累计蓝线 + 右轴红柱 + 时段刻度 +
+   * 异常红三角 + 图例 + 警告条），配色全部走站点 CSS 变量跟随明暗。
+   *
+   * 【独立 / 不影响其他】
+   * - 只有 settings.showStats 打开 + 首页才挂载；默认关。
+   * - 卡片默认折叠，点开才拉数据（懒加载）。
+   * - 抓数据用独立的 fetch 链（apiGet），低并发、每页之间让出主线程；
+   *   站点原生的「推荐帖子」列表是 Vue 自己渲染的，与本模块完全解耦，
+   *   本模块还在加载时 feed 照常加载 / 显示。
+   * - DOM 用独立容器 #pictExt-stats，不进 nativeHider 的隐藏清单，
+   *   排序「全部替换」模式下也不会被一起藏掉。
+   * - 任何异常都 try/catch 兜住，失败只在本卡片里显示一句，绝不影响全局。
+   * ============================================================ */
+  /* 样式随模块自带：追加到已有 #pictExt-style，或独立建一个。
+     全部走站点 CSS 变量，html.dark 时自动跟随暗色。 */
+  const STATS_CSS = `
+#pictExt-stats{font-family:inherit;color:var(--ui-text,#111827)}
+#pictExt-stats *{box-sizing:border-box}
+#pictExt-stats .pxst{margin:0 0 1rem}
+#pictExt-stats .pxst-head{display:flex;align-items:center;gap:.5rem;width:100%;padding:.7rem .95rem;border-radius:.6rem;border:1px solid var(--ui-border,#e5e7eb);background:var(--ui-bg,#fff);cursor:pointer;text-align:left;font:inherit;color:inherit;transition:background .15s,border-color .15s}
+#pictExt-stats .pxst-head:hover{background:var(--ui-muted,#f9fafb);border-color:var(--ui-primary,#3b82f6)}
+#pictExt-stats .pxst-head-icon{display:inline-flex;color:var(--ui-primary,#3b82f6)}
+#pictExt-stats .pxst-head-title{font-size:.9rem;font-weight:700;color:var(--ui-text,#111827)}
+#pictExt-stats .pxst-head-sub{font-size:.75rem;color:var(--ui-text-muted,#6b7280);margin-left:.25rem}
+#pictExt-stats .pxst-chevron{margin-left:auto;color:var(--ui-text-muted,#6b7280);transition:transform .18s}
+#pictExt-stats .pxst-chevron[data-state="open"]{transform:rotate(180deg)}
+#pictExt-stats .pxst-panel{margin-top:.5rem;border-radius:.6rem;border:1px solid var(--ui-border,#e5e7eb);background:var(--ui-bg,#fff);padding:.9rem;overflow:hidden}
+#pictExt-stats .pxst-tabs{display:inline-flex;gap:.25rem;padding:.25rem;border-radius:.5rem;background:var(--ui-muted,#f3f4f6);margin-bottom:.85rem}
+#pictExt-stats .pxst-tabs button{border:0;background:transparent;color:var(--ui-text-muted,#6b7280);padding:.35rem .9rem;border-radius:.4rem;font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit}
+#pictExt-stats .pxst-tabs button[data-active="true"]{background:var(--ui-bg,#fff);color:var(--ui-primary,#3b82f6);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+#pictExt-stats .pxst-card{width:100%}
+#pictExt-stats .pxst-card-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:.5rem;margin-bottom:.5rem}
+#pictExt-stats .pxst-title{font-size:1.02rem;font-weight:800;margin:0;color:var(--ui-text,#111827)}
+#pictExt-stats .pxst-range{font-size:.78rem;color:var(--ui-text-muted,#6b7280);font-variant-numeric:tabular-nums}
+#pictExt-stats .pxst-chart{width:100%;background:var(--ui-muted,#f8fafc);border-radius:.5rem;padding:.4rem .2rem}
+#pictExt-stats .pxst-svg{display:block;width:100%;height:auto;max-height:360px}
+#pictExt-stats .pxst-hit{cursor:crosshair}
+#pxc-stats-tip{position:fixed;z-index:2147483000;pointer-events:none;min-width:168px;max-width:230px;padding:.55rem .7rem;border-radius:.5rem;font-family:inherit;font-size:.76rem;line-height:1.55;color:var(--ui-text,#111827);background:var(--ui-bg,#fff);border:1px solid var(--ui-border,#e5e7eb);box-shadow:0 6px 22px rgba(0,0,0,.16);opacity:0;transition:opacity .1s}
+#pxc-stats-tip[data-show="1"]{opacity:1}
+#pxc-stats-tip .pxc-tip-day{font-weight:700;margin-bottom:.35rem;padding-bottom:.35rem;border-bottom:1px solid var(--ui-border,#e5e7eb)}
+#pxc-stats-tip .pxc-tip-row{display:flex;align-items:center;justify-content:space-between;gap:1rem}
+#pxc-stats-tip .pxc-tip-row .pxc-tip-k{color:var(--ui-text-muted,#6b7280)}
+#pxc-stats-tip .pxc-tip-row .pxc-tip-v{font-weight:700;font-variant-numeric:tabular-nums}
+#pxc-stats-tip .pxc-tip-posts .pxc-tip-v{color:var(--ui-primary,#3b82f6)}
+#pxc-stats-tip .pxc-tip-replies .pxc-tip-v{color:#ef4444}
+#pxc-stats-tip .pxc-tip-bad{margin-top:.35rem;padding-top:.35rem;border-top:1px solid var(--ui-border,#e5e7eb);color:#ef4444;font-size:.72rem}
+#pictExt-stats .pxst-axis{font-size:12px;font-family:inherit;font-variant-numeric:tabular-nums}
+#pictExt-stats .pxst-axis-l{fill:var(--ui-text-muted,#8a94a6)}
+#pictExt-stats .pxst-axis-r{fill:#ef4444;fill-opacity:.85}
+#pictExt-stats .pxst-axis-x{fill:var(--ui-text-muted,#6b7280)}
+#pictExt-stats .pxst-period-label{fill:var(--ui-text-dimmed,#9ca3af);font-size:12px;font-family:inherit}
+#pictExt-stats .pxst-period-value{fill:var(--ui-text,#111827);font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;font-family:inherit}
+#pictExt-stats .pxst-legend{display:flex;flex-wrap:wrap;gap:.4rem 1.1rem;margin-top:.7rem;font-size:.75rem;color:var(--ui-text-muted,#6b7280)}
+#pictExt-stats .pxst-legend-item{display:inline-flex;align-items:center;gap:.35rem}
+#pictExt-stats .pxst-lg-line{display:inline-block;width:18px;height:3px;border-radius:2px}
+#pictExt-stats .pxst-lg-bar{display:inline-block;width:5px;height:12px;border-radius:1px}
+#pictExt-stats .pxst-lg-tri{display:inline-block;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:10px solid #ef4444}
+#pictExt-stats .pxst-warn{display:flex;gap:.5rem;margin-top:.7rem;padding:.55rem .7rem;border-radius:.45rem;font-size:.75rem;line-height:1.5;background:color-mix(in srgb,#ef4444 8%,transparent);color:var(--ui-text,#7f1d1d);border:1px solid color-mix(in srgb,#ef4444 22%,transparent)}
+#pictExt-stats .pxst-warn-icon{flex:none;color:#ef4444}
+#pictExt-stats .pxst-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem;margin-top:.65rem;padding-top:.6rem;border-top:1px solid var(--ui-border,#e5e7eb);font-size:.72rem;color:var(--ui-text-dimmed,#9ca3af)}
+#pictExt-stats .pxst-foot button{border:1px solid var(--ui-border,#e5e7eb);background:var(--ui-bg,#fff);color:var(--ui-text-muted,#6b7280);border-radius:.4rem;padding:.25rem .7rem;font-size:.72rem;cursor:pointer;font-family:inherit}
+#pictExt-stats .pxst-foot button:hover{color:var(--ui-primary,#3b82f6);border-color:var(--ui-primary,#3b82f6)}
+#pictExt-stats .pxst-loading{display:flex;align-items:center;justify-content:center;gap:.6rem;min-height:120px;font-size:.82rem;color:var(--ui-text-muted,#6b7280)}
+#pictExt-stats .pxst-spinner{width:16px;height:16px;border:2px solid var(--ui-border,#e5e7eb);border-top-color:var(--ui-primary,#3b82f6);border-radius:50%;animation:pxst-spin .8s linear infinite}
+@keyframes pxst-spin{to{transform:rotate(360deg)}}
+`;
+
+  function injectStatsStyle() {
+    let el = document.getElementById('pictExt-style');
+    if (el && el.dataset.pxStatsStyled === '1') return;
+    if (el && el.textContent != null) {
+      el.textContent += STATS_CSS;
+      el.dataset.pxStatsStyled = '1';
+    } else {
+      const own = document.createElement('style');
+      own.id = 'pictExt-stats-style';
+      own.textContent = STATS_CSS;
+      (document.head || document.documentElement).appendChild(own);
+    }
+  }
+
+  const STATS_ID = 'pictExt-stats';
+  const STATS_CACHE_KEY = 'pictExt:stats:v1';
+  const STATS_TTL = 24 * 60 * 60 * 1000; // 缓存 24h
+  const STATS_MAX_PAGES = 200;           // 安全上限：200 页 × 50 = 1 万帖，防止游标异常无限翻
+  const STATS_YIELD_MS = 0;              // 每页之间让出主线程的时长
+
+  let statsExpanded = false;   // 卡片是否展开（本次会话内记住，刷新后回到折叠）
+  let statsTab = 'posts';      // posts | replies
+  let statsData = null;        // {days:[{day,posts,replies}], first, last, daysCount}
+  let statsGen = 0;            // 抓取代号：换页 / 关设置时自增，旧请求回来直接丢弃
+  let statsLoading = false;
+
+  /** 把 /topics 的原始条目按「自然日」聚合成时间序列 */
+  function aggregateStats(items) {
+    const buckets = new Map(); // 'YYYY-MM-DD' -> {posts, replies}
+    let minT = Infinity;
+    let maxT = -Infinity;
+    for (const it of items) {
+      const t = typeof it._t === 'number' ? it._t : Date.parse(it.createdAt);
+      if (!Number.isFinite(t) || t <= 0) continue;
+      const day = statsDayKey(t);
+      if (!day) continue;
+      const b = buckets.get(day) || { posts: 0, replies: 0 };
+      b.posts += 1;
+      // replyCount 是该帖「至今累计收到的回复」，归到它发布那天，作为回复热度的近似。
+      b.replies += Number(it.replyCount || 0);
+      buckets.set(day, b);
+      if (t < minT) minT = t;
+      if (t > maxT) maxT = t;
+    }
+    // 从最早那天补到最晚那天，中间没有帖子的天空桶填 0（曲线才连续）
+    const days = [];
+    if (Number.isFinite(minT) && Number.isFinite(maxT)) {
+      const cur = new Date(minT);
+      cur.setHours(0, 0, 0, 0);
+      const end = new Date(maxT);
+      end.setHours(0, 0, 0, 0);
+      let guard = 0;
+      while (cur <= end && guard++ < 20000) {
+        const key = statsDayKey(cur.getTime());
+        const b = buckets.get(key) || { posts: 0, replies: 0 };
+        days.push({ day: key, posts: b.posts, replies: b.replies });
+        cur.setDate(cur.getDate() + 1);
+      }
+    }
+    return {
+      days,
+      first: days.length ? days[0].day : '',
+      last: days.length ? days[days.length - 1].day : '',
+      daysCount: days.length,
+      fetchedAt: Date.now(),
+    };
+  }
+
+  function statsDayKey(t) {
+    const d = new Date(t);
+    if (isNaN(d.getTime())) return '';
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+
+  function readStatsCache() {
+    try {
+      const raw = localStorage.getItem(STATS_CACHE_KEY);
+      if (!raw) return null;
+      const o = JSON.parse(raw);
+      if (!o || !Array.isArray(o.days) || !o.days.length) return null;
+      if (Date.now() - (o.fetchedAt || 0) > STATS_TTL) return null;
+      return o;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeStatsCache(data) {
+    try {
+      localStorage.setItem(STATS_CACHE_KEY, JSON.stringify(data));
+    } catch {
+      /* 无痕 / 存储满：不缓存也不影响功能 */
+    }
+  }
+
+  /** 抓全站 topic（独立链，低并发，可随时中止） */
+  async function loadStatsData(force) {
+    if (statsLoading) return;
+    if (!force) {
+      const cached = readStatsCache();
+      if (cached) {
+        statsData = cached;
+        renderStatsBody();
+        return;
+      }
+    }
+    statsLoading = true;
+    const gen = ++statsGen;
+    renderStatsLoading('正在读取全站公开数据…');
+    const all = [];
+    let cursor = null;
+    let pages = 0;
+    try {
+      while (pages < STATS_MAX_PAGES) {
+        if (gen !== statsGen) return; // 被取消
+        const params = { limit: PAGE_LIMIT, sort: 'latest', cursor };
+        const res = await apiGet('/topics', params);
+        const items = Array.isArray(res.items) ? res.items : [];
+        for (const it of items) all.push(it);
+        pages += 1;
+        if (gen !== statsGen) return;
+        renderStatsLoading(`正在读取全站公开数据… 第 ${pages} 页 / ${all.length} 帖`);
+        const next = res.pageInfo && res.pageInfo.nextCursor ? res.pageInfo.nextCursor : null;
+        if (!next || items.length === 0) break;
+        cursor = next;
+        // 每页之间让出主线程：feed 的渲染、滚动都不被本模块拖住
+        await new Promise((r) => setTimeout(r, STATS_YIELD_MS));
+      }
+      if (gen !== statsGen) return;
+      if (!all.length) {
+        renderStatsLoading('暂时读不到数据，请稍后再试。');
+        return;
+      }
+      statsData = aggregateStats(all);
+      writeStatsCache(statsData);
+      renderStatsBody();
+    } catch (err) {
+      if (gen !== statsGen) return;
+      log('stats load failed', err);
+      renderStatsLoading('数据加载失败，请点「刷新」重试。');
+    } finally {
+      if (gen === statsGen) statsLoading = false;
+    }
+  }
+
+  /* ---------------- SVG 绘图 ---------------- */
+
+  const STATS_CAP_CLR = '#ef4444';
+  const STATS_LINE_CLR = '#3b82f6';
+
+  function statsNiceCeil(v) {
+    if (!(v > 0)) return 1;
+    const exp = Math.pow(10, Math.floor(Math.log10(v)));
+    const f = v / exp;
+    const nice = f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10;
+    return nice * exp;
+  }
+  function statsComma(n) {
+    return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  /**
+   * 生成一张图的 SVG。series: 'posts' | 'replies'
+   * 视觉对齐参考图：双 Y 轴、5 条横向网格、7 个时段刻度、累计阶梯线 +
+   * 每日红柱、超阈值日移出图表范围并用红三角标记。
+   */
+  function statsChartSVG(series) {
+    const days = statsData.days;
+    const n = days.length;
+    const W = 1040;
+    const H = 430;
+    const L = 92;   // 左轴留白
+    const R = 78;   // 右轴留白
+    const T = 78;   // 顶部时段区
+    const B = 62;   // 底部日期区
+    const pw = W - L - R;
+    const ph = H - T - B;
+
+    const daily = days.map((d) => d[series]);
+    const cum = [];
+    let running = 0;
+    for (const v of daily) { running += v; cum.push(running); }
+    // 两套累计都算出来：悬停提示要同时显示「发帖 / 回复」两组数字，不随标签页变
+    const cumPosts = [];
+    const cumReplies = [];
+    let rp = 0;
+    let rr = 0;
+    for (const d of days) {
+      rp += d.posts;
+      rr += d.replies;
+      cumPosts.push(rp);
+      cumReplies.push(rr);
+    }
+
+    // 左轴（累计）：覆盖最大累计值
+    const cumMax = statsNiceCeil(Math.max(1, running));
+    // 右轴（每日）：用「正常上限」——95 分位附近向上取整，异常尖峰移出范围
+    const sorted = daily.slice().sort((a, b) => a - b);
+    const q95 = sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] : 1;
+    const cap = Math.max(1, statsNiceCeil(q95 || 1));
+    const anomalies = [];
+    daily.forEach((v, i) => { if (v > cap) anomalies.push(i); });
+
+    const parts = [];
+    const grid = 5;
+    // 背景网格 + 双轴刻度
+    for (let i = 0; i <= grid; i++) {
+      const y = T + (ph * i) / grid;
+      parts.push(`<line x1="${L}" y1="${y.toFixed(1)}" x2="${L + pw}" y2="${y.toFixed(1)}" stroke="var(--ui-border, #e5e7eb)" stroke-opacity=".7" stroke-width="1"/>`);
+      const leftVal = cumMax - (cumMax * i) / grid;
+      const rightVal = cap - (cap * i) / grid;
+      parts.push(`<text x="${L - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end" class="pxst-axis pxst-axis-l">${statsComma(leftVal)}</text>`);
+      parts.push(`<text x="${L + pw + 10}" y="${(y + 4).toFixed(1)}" text-anchor="start" class="pxst-axis pxst-axis-r">${statsComma(rightVal)}</text>`);
+    }
+
+    // 7 个时段：竖虚线 + 时段末累计值
+    const periodCount = 7;
+    for (let s = 0; s < periodCount; s++) {
+      const x = L + (pw * s) / (periodCount - 1);
+      if (s > 0 && s < periodCount - 1) {
+        parts.push(`<line x1="${x.toFixed(1)}" y1="${T}" x2="${x.toFixed(1)}" y2="${T + ph}" stroke="var(--ui-border, #e5e7eb)" stroke-opacity=".45" stroke-width="1" stroke-dasharray="4 4"/>`);
+      }
+      const idx = Math.min(n - 1, Math.max(0, Math.round(((s + 1) / periodCount) * n) - 1));
+      parts.push(`<text x="${x.toFixed(1)}" y="${T - 42}" text-anchor="middle" class="pxst-period-label">时段 ${s + 1}</text>`);
+      parts.push(`<text x="${x.toFixed(1)}" y="${T - 18}" text-anchor="middle" class="pxst-period-value">${statsComma(cum[idx] || 0)}</text>`);
+    }
+
+    const xOf = (i) => L + (n <= 1 ? pw / 2 : (pw * i) / (n - 1));
+    const barW = Math.max(1, Math.min(14, (n <= 1 ? pw : pw / n) * 0.72));
+
+    // 每日红柱（超出 cap 的不画柱，改由红三角标记）
+    for (let i = 0; i < n; i++) {
+      const v = daily[i];
+      if (v <= 0 || v > cap) continue;
+      const x = xOf(i);
+      const h = (v / cap) * ph;
+      const y = T + ph - h;
+      parts.push(`<rect x="${(x - barW / 2).toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${STATS_CAP_CLR}" fill-opacity=".82"/>`);
+    }
+
+    // 累计蓝色阶梯线：先数据多的日子才抬升，视觉同参考图的累计曲线
+    if (n) {
+      let d = `M ${xOf(0).toFixed(1)} ${(T + ph - (cum[0] / cumMax) * ph).toFixed(1)}`;
+      for (let i = 1; i < n; i++) {
+        d += ` L ${xOf(i).toFixed(1)} ${(T + ph - (cum[i] / cumMax) * ph).toFixed(1)}`;
+      }
+      parts.push(`<path d="${d}" fill="none" stroke="${STATS_LINE_CLR}" stroke-width="2.4" stroke-linejoin="round"/>`);
+      // 线下方淡蓝填充
+      parts.push(`<path d="${d} L ${xOf(n - 1).toFixed(1)} ${T + ph} L ${xOf(0).toFixed(1)} ${T + ph} Z" fill="${STATS_LINE_CLR}" fill-opacity=".10"/>`);
+    }
+
+    // 异常刷屏：红三角标在顶部（已移出图表范围）
+    for (const i of anomalies) {
+      const x = xOf(i);
+      parts.push(`<path d="M ${x.toFixed(1)} ${T - 10} l 6 10 l -12 0 Z" fill="${STATS_CAP_CLR}"/>`);
+    }
+
+    // X 轴日期：7 个刻度
+    for (let s = 0; s < periodCount; s++) {
+      const idx = Math.min(n - 1, Math.round((s / (periodCount - 1)) * (n - 1)));
+      const x = xOf(idx);
+      const label = days[idx] ? days[idx].day.slice(0, 7) : '';
+      parts.push(`<text x="${x.toFixed(1)}" y="${T + ph + 24}" text-anchor="middle" class="pxst-axis pxst-axis-x">${label}</text>`);
+    }
+
+    // 透明命中条：铺满每一天的整列（含红色柱 / 累计线区域），鼠标一进去就能看到当天详情。
+    // 数据在 data-* 上，浮层直接从节点读，不依赖闭包；节点被重画也不影响委托。
+    const colW = n <= 1 ? pw : pw / (n - 1);
+    const hitW = Math.max(4, Math.min(colW, 26));
+    const anomalySet = new Set(anomalies);
+    for (let i = 0; i < n; i++) {
+      const x = xOf(i);
+      const d = days[i];
+      parts.push(
+        `<rect class="pxst-hit" x="${(x - hitW / 2).toFixed(1)}" y="${T}" width="${hitW.toFixed(1)}" height="${ph}" ` +
+          `fill="transparent" data-px-stats-day="${esc(d.day)}" data-px-stats-p="${d.posts}" data-px-stats-r="${d.replies}" ` +
+          `data-px-stats-cp="${cumPosts[i]}" data-px-stats-cr="${cumReplies[i]}" data-px-stats-bad="${anomalySet.has(i) ? '1' : '0'}"/>`
+      );
+    }
+
+    return `<svg class="pxst-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="PICKCAT ${series === 'posts' ? '帖子发布' : '回复热度'}统计">${parts.join('')}</svg>`;
+  }
+
+  function statsLegendHTML(series, cap, anomalyCount) {
+    const totalLabel = series === 'posts' ? '帖子累计数（左轴）' : '回复累计数（左轴）';
+    const dailyLabel = series === 'posts' ? '每日发帖数（右轴' : '每日回复数（右轴';
+    return `<div class="pxst-legend">
+      <span class="pxst-legend-item"><i class="pxst-lg-line" style="background:${STATS_LINE_CLR}"></i>${totalLabel}</span>
+      <span class="pxst-legend-item"><i class="pxst-lg-bar" style="background:${STATS_CAP_CLR}"></i>${dailyLabel}，正常上限 ${statsComma(cap)}）</span>
+      <span class="pxst-legend-item"><i class="pxst-lg-tri" style="border-bottom-color:${STATS_CAP_CLR}"></i>异常刷屏（已移出图表范围）</span>
+    </div>
+    ${anomalyCount > 0 ? `<div class="pxst-warn"><span class="pxst-warn-icon">⚠</span><span>检测到 <b>${anomalyCount}</b> 天存在异常刷屏数据（单日${series === 'posts' ? '发帖' : '回复'}数超过 ${statsComma(cap)}）。为避免干扰正常趋势，这些点已超出图表顶部显示，红色三角为它们的位置标记。</span></div>` : ''}`;
+  }
+
+  /** 渲染展开后的图表主体 */
+  function renderStatsBody() {
+    hideStatsTip(); // 重画后旧命中条失效，先收起浮层
+    const card = document.getElementById(STATS_ID);
+    if (!card) return;
+    const host = card.querySelector('.pxst-body');
+    if (!host) return;
+    if (!statsData || !statsData.days || !statsData.days.length) {
+      host.innerHTML = `<div class="pxst-loading">暂时没有数据。</div>`;
+      return;
+    }
+    const series = statsTab;
+    const daily = statsData.days.map((d) => d[series]);
+    const sorted = daily.slice().sort((a, b) => a - b);
+    const q95 = sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] : 1;
+    const cap = Math.max(1, statsNiceCeil(q95 || 1));
+    const anomalyCount = daily.filter((v) => v > cap).length;
+    const title = `PICKCAT ${series === 'posts' ? '帖子发布总数统计' : '帖子回复热度统计'}`;
+    const range = `共 ${statsData.daysCount} 天数据 · ${statsData.first} ~ ${statsData.last}`;
+    const cacheHint = (() => {
+      const d = new Date(statsData.fetchedAt || 0);
+      return isNaN(d.getTime()) ? '' : `数据读取于 ${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    })();
+    host.innerHTML = `<div class="pxst-card">
+      <div class="pxst-card-head">
+        <h3 class="pxst-title">${esc(title)}</h3>
+        <span class="pxst-range">${esc(range)}</span>
+      </div>
+      <div class="pxst-chart">${statsChartSVG(series)}</div>
+      ${statsLegendHTML(series, cap, anomalyCount)}
+      <div class="pxst-foot"><span>${esc(cacheHint)} · 数据来自站点公开只读接口，按每天新增统计</span><button type="button" data-px-stats-refresh>刷新</button></div>
+    </div>`;
+    syncStatsTabs(card);
+  }
+
+  function renderStatsLoading(msg) {
+    const card = document.getElementById(STATS_ID);
+    if (!card) return;
+    const host = card.querySelector('.pxst-body');
+    if (host) host.innerHTML = `<div class="pxst-loading"><span class="pxst-spinner"></span>${esc(msg)}</div>`;
+    syncStatsTabs(card);
+  }
+
+  function statsCardHTML() {
+    return `<button type="button" class="pxst-head" data-px-stats-toggle aria-expanded="${statsExpanded}">
+        <span class="pxst-head-icon">${icon('chat', 16)}</span>
+        <span class="pxst-head-title">PICKCAT 数据统计</span>
+        <span class="pxst-head-sub">${statsExpanded ? '点击收起' : '点击展开 · 帖子发布 / 回复热度'}</span>
+        <span class="pxst-chevron" data-state="${statsExpanded ? 'open' : 'closed'}">▾</span>
+      </button>
+      <div class="pxst-panel"${statsExpanded ? '' : ' hidden'}>
+        <div class="pxst-tabs" role="tablist" aria-label="数据统计类别">
+          <button type="button" role="tab" data-px-stats-tab="posts" data-active="${statsTab === 'posts'}" aria-selected="${statsTab === 'posts'}">帖子发布</button>
+          <button type="button" role="tab" data-px-stats-tab="replies" data-active="${statsTab === 'replies'}" aria-selected="${statsTab === 'replies'}">回复热度</button>
+        </div>
+        <div class="pxst-body"></div>
+      </div>`;
+  }
+
+  function syncStatsTabs(card) {
+    card.querySelectorAll('[data-px-stats-tab]').forEach((b) => {
+      const on = b.dataset.pxStatsTab === statsTab;
+      b.dataset.active = String(on);
+      b.setAttribute('aria-selected', String(on));
+    });
+  }
+
+  /** 挂载 / 卸载卡片（只首页 + 开关打开时存在） */
+  function syncStatsCard() {
+    const isHome = location.pathname === '/' || location.pathname === '/index';
+    const card = document.getElementById(STATS_ID);
+    if (settings.showStats && isHome) injectStatsStyle();
+    if (!settings.showStats || !isHome) {
+      statsGen += 1; // 取消在途请求
+      statsLoading = false;
+      hideStatsTip();
+      if (card) card.remove();
+      return;
+    }
+    if (card && card.isConnected) {
+      // 兜底：万一某个旧流程把卡片设成了 display:none（替换模式曾误伤），这里恢复
+      if (card.style.display === 'none') card.style.display = '';
+      return;
+    }
+    // 找一个稳定的落点：首页排序栏所在容器的父级之前；找不到就退回 feed 段之前
+    const tabs = document.querySelector('[aria-label="首页排序"]');
+    const feed = document.querySelector('section[aria-label="推荐帖子"], section[aria-label="最新帖子"], section[aria-label="关注帖子"]');
+    const anchor = tabs || feed;
+    if (!anchor) return; // 等 Vue 渲染出来，下一次 observer / mount 会再试
+    const host = document.createElement('section');
+    host.id = STATS_ID;
+    host.dataset.px = '1';
+    host.className = 'pxst';
+    host.innerHTML = statsCardHTML();
+    const before = anchor.parentElement && anchor.parentElement.contains(anchor) ? anchor.parentElement : anchor;
+    before.insertAdjacentElement('beforebegin', host);
+    if (statsExpanded) {
+      if (!statsData) statsData = readStatsCache();
+      renderStatsBody();
+      if (!statsData && !statsLoading) loadStatsData(false);
+    }
+  }
+
+  const scheduleStats = debounce(() => {
+    try {
+      syncStatsCard();
+    } catch (err) {
+      log('stats mount failed', err);
+    }
+  }, 200);
+
+  /** 悬停浮层：单个 fixed 元素挂 body，避免被卡片 overflow 裁掉 */
+  const TIP_ID = 'pxc-stats-tip';
+  function ensureStatsTip() {
+    let tip = document.getElementById(TIP_ID);
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.id = TIP_ID;
+      tip.dataset.px = '1';
+      tip.setAttribute('role', 'tooltip');
+      (document.body || document.documentElement).appendChild(tip);
+    }
+    return tip;
+  }
+  function hideStatsTip() {
+    const tip = document.getElementById(TIP_ID);
+    if (tip) tip.dataset.show = '0';
+  }
+  function showStatsTip(hit, x, y) {
+    const tip = ensureStatsTip();
+    const day = hit.dataset.pxStatsDay || '';
+    const posts = hit.dataset.pxStatsP || '0';
+    const replies = hit.dataset.pxStatsR || '0';
+    const cp = hit.dataset.pxStatsCp || '0';
+    const cr = hit.dataset.pxStatsCr || '0';
+    const bad = hit.dataset.pxStatsBad === '1';
+    tip.innerHTML =
+      `<div class="pxc-tip-day">${esc(day)}</div>` +
+      `<div class="pxc-tip-row pxc-tip-posts"><span class="pxc-tip-k">当日发帖</span><span class="pxc-tip-v">${statsComma(posts)}</span></div>` +
+      `<div class="pxc-tip-row pxc-tip-posts"><span class="pxc-tip-k">累计发帖</span><span class="pxc-tip-v">${statsComma(cp)}</span></div>` +
+      `<div class="pxc-tip-row pxc-tip-replies"><span class="pxc-tip-k">当日回复</span><span class="pxc-tip-v">${statsComma(replies)}</span></div>` +
+      `<div class="pxc-tip-row pxc-tip-replies"><span class="pxc-tip-k">累计回复</span><span class="pxc-tip-v">${statsComma(cr)}</span></div>` +
+      (bad ? `<div class="pxc-tip-bad">⚠ 异常刷屏日（超出正常上限）</div>` : '');
+    tip.dataset.show = '1';
+    // 贴着鼠标放，靠近视口边缘时翻到另一侧，别跑出屏幕
+    const pad = 14;
+    const w = tip.offsetWidth || 180;
+    const h = tip.offsetHeight || 130;
+    let left = x + pad;
+    let top = y + pad;
+    if (left + w > window.innerWidth - 8) left = x - w - pad;
+    if (top + h > window.innerHeight - 8) top = y - h - pad;
+    tip.style.left = Math.max(8, left) + 'px';
+    tip.style.top = Math.max(8, top) + 'px';
+  }
+
+  /** 展开 / 收起 / 切页 / 刷新 —— document 级委托，节点被 Vue 重建也不丢 */
+  function bindStatsEvents() {
+    if (bindStatsEvents.bound) return;
+    bindStatsEvents.bound = true;
+    // 悬停详情：柱子命中条 → 浮层；离开图表区 / 滚动 / 折叠 → 收起
+    document.addEventListener(
+      'pointermove',
+      (e) => {
+        const hit = e.target && e.target.closest ? e.target.closest('.pxst-hit') : null;
+        if (hit && hit.closest('#' + STATS_ID)) showStatsTip(hit, e.clientX, e.clientY);
+        else hideStatsTip();
+      },
+      true
+    );
+    document.addEventListener('scroll', hideStatsTip, true);
+    window.addEventListener('blur', hideStatsTip);
+
+    document.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (e.button !== 0 || !e.target || !e.target.closest) return;
+        const card = e.target.closest('#' + STATS_ID);
+        if (!card) return;
+        const tog = e.target.closest('[data-px-stats-toggle]');
+        if (tog) {
+          e.preventDefault();
+          statsExpanded = !statsExpanded;
+          tog.setAttribute('aria-expanded', String(statsExpanded));
+          const sub = tog.querySelector('.pxst-head-sub');
+          if (sub) sub.textContent = statsExpanded ? '点击收起' : '点击展开 · 帖子发布 / 回复热度';
+          const che = tog.querySelector('.pxst-chevron');
+          if (che) che.dataset.state = statsExpanded ? 'open' : 'closed';
+          const panel = card.querySelector('.pxst-panel');
+          if (panel) panel.hidden = !statsExpanded;
+          if (statsExpanded) {
+            if (!statsData) statsData = readStatsCache();
+            renderStatsBody();
+            if (!statsData && !statsLoading) loadStatsData(false);
+          } else {
+            statsGen += 1;
+            statsLoading = false;
+            hideStatsTip();
+          }
+          return;
+        }
+        const tab = e.target.closest('[data-px-stats-tab]');
+        if (tab) {
+          e.preventDefault();
+          const key = tab.dataset.pxStatsTab;
+          if (key !== statsTab) {
+            statsTab = key;
+            renderStatsBody();
+          }
+          return;
+        }
+        if (e.target.closest('[data-px-stats-refresh]')) {
+          e.preventDefault();
+          loadStatsData(true);
+        }
+      },
+      true
+    );
+  }
+
+  /* ============================================================
    * 11. 挂载 / 卸载
    * ============================================================ */
   let view = null;
@@ -2960,8 +4103,8 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
   }
 
   function mount() {
-    // 帖子详情页：走折叠 / 信息补全
-    if (detailTopicId()) {
+    // 帖子详情 / 作品详情：走折叠 / 信息补全
+    if (detailScope()) {
       if (view) teardown();
       processDetail();
       return;
@@ -3047,6 +4190,12 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
       mount();
     } catch (err) {
       log('mount failed', err);
+    }
+    // 首页统计卡片：与 feed 解耦，独立判断是否该挂载（开关/路由/站点重渲染都走这里）
+    try {
+      scheduleStats();
+    } catch (err) {
+      log('stats schedule failed', err);
     }
   }, 200);
 
@@ -3466,12 +4615,13 @@ aside[aria-label="帖子信息"] > nav[aria-label="文章目录"]{
     bindSettingsNavReset();
     bindReplyToolbarEvents();
     bindDelegatedUI();
+    bindStatsEvents();
     bindHashFocus();
     startObserver();
     scheduleMount();
     scheduleReplyToolbar();
     console.info(
-      '%cpictExt%c v1.7.4 扩展已加载 · 只读 · Cookie 仅在本页内存驻留，离开即清除',
+      '%cpictExt%c v1.9.0 扩展已加载 · 只读 · Cookie 仅在本页内存驻留，离开即清除',
       'background:#3b82f6;color:#fff;border-radius:3px;padding:1px 5px;font-weight:700',
       'color:#6b7280'
     );

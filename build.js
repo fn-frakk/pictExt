@@ -39,6 +39,7 @@ const ORDER = [
   '22-collection',
   '23-reply-toolbar',
   '24-settings-ui',
+  '25-stats',
   '30-mount',
   '31-profile-collections',
   '32-cookie',

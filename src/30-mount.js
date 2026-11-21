@@ -40,8 +40,8 @@
   }
 
   function mount() {
-    // 帖子详情页：走折叠 / 信息补全
-    if (detailTopicId()) {
+    // 帖子详情 / 作品详情：走折叠 / 信息补全
+    if (detailScope()) {
       if (view) teardown();
       processDetail();
       return;
@@ -127,6 +127,12 @@
       mount();
     } catch (err) {
       log('mount failed', err);
+    }
+    // 首页统计卡片：与 feed 解耦，独立判断是否该挂载（开关/路由/站点重渲染都走这里）
+    try {
+      scheduleStats();
+    } catch (err) {
+      log('stats schedule failed', err);
     }
   }, 200);
 

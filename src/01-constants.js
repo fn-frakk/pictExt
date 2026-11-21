@@ -13,6 +13,14 @@
   const CACHE_TTL = 90 * 1000;
   const DEBUG = false;
 
+  /* ---------- 性能相关（v1.7.5） ---------- */
+  const POOL_WORKERS = 8;         // 深翻时最多几个并行段（整池共享，按页数分配）
+  const PAGES_PER_WORKER = 10;    // 每段至少 10 页才值得单开一个 worker
+  const RENDER_CHUNK = 20;        // 「再多看几条」一次多渲染多少张卡
+  const RENDER_CHUNK_MIN = 10;
+  const RENDER_CHUNK_MAX = 100;
+  const POOL_CACHE_MAX = 4;       // 候选池缓存最多留几个（每个可能上万条，不能无限存）
+
   /** 8 个排序键（v1.5 起「全部替换」模式固定就是这 8 个，不再跟站内合并） */
   const SORT_KEYS = new Set([
     'following', 'recommended', 'default', 'search', 'latest', 'earliest',

@@ -39,6 +39,11 @@
   font-size:12px; line-height:1.6; color:var(--px-dim); margin:0 0 10px; padding-left:2px;
 }
 #${PANEL_ID} .px-list{ display:flex; flex-direction:column; gap:12px; }
+/* 几千张卡也不卡：屏幕外的卡片跳过布局与绘制（v1.7.5） */
+#${PANEL_ID} .px-list > article{
+  content-visibility:auto;
+  contain-intrinsic-size:auto 170px;
+}
 #${PANEL_ID} .px-state{
   padding:26px 12px; text-align:center; font-size:13px; color:var(--px-dim);
 }

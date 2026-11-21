@@ -32,6 +32,24 @@
     return m ? m[1] : '';
   }
 
+  function detailWorkId() {
+    const m = location.pathname.match(/^\/works\/([^/?#]+)/u);
+    return m ? m[1] : '';
+  }
+
+  /**
+   * 评论区所属的详情页：帖子详情 / 作品详情
+   * 两类页面的评论区是同一套组件（section#comments + article[…的评论]），
+   * 但接口不同（/topics/{id}/posts vs /works/{id}/comments），所以要带上 kind。
+   */
+  function detailScope() {
+    const topic = detailTopicId();
+    if (topic) return { kind: 'topic', id: topic, key: 'topic:' + topic };
+    const work = detailWorkId();
+    if (work) return { kind: 'work', id: work, key: 'work:' + work };
+    return null;
+  }
+
   /** 折叠开关按钮，样式对齐站点回复行上的小按钮 */
   function makeThreadToggle() {
     const btn = document.createElement('button');

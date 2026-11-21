@@ -21,41 +21,51 @@
   ];
   /** 当前评论区排序（native = 原版不动） */
   let commentSortKey = 'native';
-  /** topicId|sort -> {at, ids, map} */
+  /** scopeKey|sort -> {at, ids, map} */
   const commentIndexCache = new Map();
   let followingCache = null;
   /** 我们改过布局的容器，退出改版时要还原（Set 而不是 WeakSet：要能遍历） */
   const touchedContainers = new Set();
+  /** 作品评论接口的 limit 上限只有 30（站点客户端也写死 30，填 50 会 400） */
+  const WORK_COMMENT_LIMIT = 30;
+
+  /** 评论区接口：帖子楼层 vs 作品评论 */
+  function commentApiPath(scope, sortKey, cursor) {
+    const enc = encodeURIComponent(scope.id);
+    if (scope.kind === 'work') {
+      return { path: '/works/' + enc + '/comments', params: { limit: WORK_COMMENT_LIMIT, sort: sortKey, cursor } };
+    }
+    return { path: '/topics/' + enc + '/posts', params: { limit: PAGE_LIMIT, sort: sortKey, cursor } };
+  }
 
   function commentSortBarEl() {
     return document.getElementById(COMMENT_SORT_ID);
   }
 
   /** 评论索引：一次拉多页，返回该排序下顶层的 id 顺序 + postId 明细 */
-  async function loadCommentIndex(topicId, sortKey) {
-    const ck = `${topicId}|${sortKey}`;
+  async function loadCommentIndex(scope, sortKey) {
+    const ck = `${scope.key}|${sortKey}`;
     const hit = commentIndexCache.get(ck);
     if (hit && Date.now() - hit.at < CACHE_TTL) return hit;
     const map = new Map();
     const ids = [];
     let cursor = null;
     for (let i = 0; i < 6; i++) {
-      const data = await apiGet('/topics/' + encodeURIComponent(topicId) + '/posts', {
-        limit: PAGE_LIMIT,
-        sort: sortKey,
-        cursor,
-      });
+      const req = commentApiPath(scope, sortKey, cursor);
+      const data = await apiGet(req.path, req.params);
       for (const p of data.items || []) {
         if (!p || !p.id) continue;
         const kids = Array.isArray(p.children) ? p.children : [];
         if (!map.has(p.id)) ids.push(p.id);
         map.set(p.id, {
           likeCount: Number(p.likeCount ?? 0),
+          // 作品评论是扁平列表（回复靠 replyToCommentNumber 自己拼），没有 children，楼高固定算 0
           depth: kids.reduce((n, c) => n + 1 + (Array.isArray(c.children) ? c.children.length : 0), 0),
           authorId: p.author?.id || '',
           createdAt: p.createdAt || null,
+          // 帖子楼层用 postNumber，作品评论用 commentNumber
           pinned: !!p.pinned,
-          postNumber: Number(p.postNumber ?? 0),
+          postNumber: Number(p.postNumber ?? p.commentNumber ?? 0),
         });
       }
       const next = data.pageInfo && data.pageInfo.nextCursor;
@@ -170,9 +180,10 @@
   }
 
   /** 算出当前排序下的楼层 id 顺序 */
-  async function buildCommentOrder(topicId, key) {
+  async function buildCommentOrder(scope, key) {
+    // 「最多点赞」和「关注」都要拿到点赞数 / 作者，统一用最早那份索引（含全部楼层）
     if (key === 'likes') {
-      const { map } = await loadCommentIndex(topicId, 'earliest');
+      const { map } = await loadCommentIndex(scope, 'earliest');
       const entries = [...map.entries()];
       const metric = 'likeCount';
       entries.sort((a, b) => {
@@ -185,7 +196,7 @@
       });
       return entries.map(([id]) => id);
     }
-    const { ids } = await loadCommentIndex(topicId, key);
+    const { ids } = await loadCommentIndex(scope, key);
     return ids;
   }
 
@@ -193,14 +204,14 @@
     if (!key || key === 'native') return '';
     const arts = [...section.querySelectorAll(THREAD_SEL)];
     if (!arts.length) return '还没有回复';
-    const topicId = detailTopicId();
-    if (!topicId) return '没认出这是哪个帖子（地址栏不是 /forum/post/…）';
+    const scope = detailScope();
+    if (!scope) return '没认出这是哪个帖子或作品（地址栏不是 /forum/post/… 或 /works/…）';
 
     if (key === 'following') {
       resetCommentLayout(section);
       const set = await loadFollowingSet();
       if (!set) return '关注筛选需要登录，且要能读到你的关注列表';
-      const { map } = await loadCommentIndex(topicId, 'earliest');
+      const { map } = await loadCommentIndex(scope, 'earliest');
       let shown = 0;
       for (const a of arts) {
         const info = map.get(threadPostId(a));
@@ -211,7 +222,7 @@
           a.dataset.pxHidden = '1';
         }
       }
-      return `只显示你关注的 ${shown} 条楼层`;
+      return scope.kind === 'work' ? `只显示你关注的 ${shown} 条评论` : `只显示你关注的 ${shown} 条楼层`;
     }
 
     // 其余排序：清掉上一次的隐藏状态再排
@@ -219,7 +230,7 @@
       el.style.display = '';
       delete el.dataset.pxHidden;
     });
-    const ids = await buildCommentOrder(topicId, key);
+    const ids = await buildCommentOrder(scope, key);
     return applyCommentLayout(section, ids);
   }
 
@@ -313,7 +324,8 @@
     }
     const size = commentPageSize();
     const total = Math.max(1, Math.ceil(visible.length / size));
-    const topic = detailTopicId();
+    const scope = detailScope();
+    const topic = scope ? scope.key : '';
     if (commentPage.topic !== topic) {
       commentPage.topic = topic;
       commentPage.page = 1;

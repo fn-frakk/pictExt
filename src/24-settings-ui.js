@@ -59,7 +59,7 @@
       min: 1,
       max: 100,
       label: '候选池：最新页数',
-      desc: '「最多浏览 / 点赞 / 回复 / 收藏 / 最早」是在候选池里排的。这里设最新链先翻几页（每页 50 条，1-100 页）。',
+      desc: '「最新 / 最早 / 最多浏览 / 点赞 / 回复 / 收藏」都是在候选池里排的。这里设最新链先翻几页（每页 50 条，1-100 页）。设大能覆盖更多帖子，配合「深翻并发加速」也不会太慢。',
     },
     {
       key: 'poolHotPages',
@@ -68,6 +68,28 @@
       max: 100,
       label: '候选池：推荐页数',
       desc: '候选池里热帖（推荐）链先翻几页（每页 50 条，1-100 页）。池子看完还能在底部「继续往后翻」。',
+    },
+    {
+      key: 'poolRenderChunk',
+      type: 'number',
+      min: 10,
+      max: 100,
+      label: '候选池：每次多显示几条',
+      desc: '点「再多看几条」一次多放几张卡出来（10-100，默认 20）。设小一点更省内存，设大一点一屏能看更多。',
+    },
+    {
+      key: 'latestByCreated',
+      type: 'switch',
+      label: '「最新」按发布时间',
+      desc:
+        '开着：候选池里按帖子发布时间重排，刚发出来的排最前（默认）。关掉：用站内 sort=latest 的原生顺序 —— 它其实是按「最后活跃时间」，老帖被人回复一句就会被顶到前面。',
+    },
+    {
+      key: 'poolParallel',
+      type: 'switch',
+      label: '深翻并发加速',
+      desc:
+        '候选池页数设得很大时（比如各 100 页），把要翻的页按活跃时间点切成几段同时拉，墙钟时间大约缩到 1/4～1/6。游标读不懂或请求失败会自动退回一页一页串行，不会出错。',
     },
     {
       key: 'commentSortMode',
@@ -154,6 +176,13 @@
     },
     { key: 'showTags', type: 'switch', label: '卡片显示标签', desc: '在帖子卡片上显示 #标签，可点进对应板块。' },
     { key: 'showPinned', type: 'switch', label: '卡片显示置顶标记', desc: '置顶帖标题前加一枚图钉。' },
+    {
+      key: 'showStats',
+      type: 'switch',
+      label: '首页「PICKCAT 数据统计」卡片',
+      desc:
+        '在首页加一张可折叠的统计卡片（帖子发布 / 回复热度两张图，仿编程猫统计风格）。默认关。开启后卡片默认也是收起的，点开才去读数据；抓取是独立低优先级的，站点推荐流照常加载，互不干扰。结果在本机缓存 24 小时。',
+    },
   ];
 
   function switchHTML(key, on) {
@@ -257,7 +286,7 @@
       nativeHider.show();
       teardown();
     }
-    if (detailTopicId()) processDetail();
+    if (detailScope()) processDetail();
     expandReplyToolbars();
     scheduleMount();
   }
